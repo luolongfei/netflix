@@ -146,7 +146,7 @@ class Netflix(object):
         self.day = 3
 
         self.first_time = []
-        self.today = Netflix.today()
+        self.today = Netflix.today_()
 
         # 线程池
         self.max_workers = self.args.max_workers
@@ -164,7 +164,7 @@ class Netflix(object):
         raise Exception('未配置 Netflix 账户')
 
     @staticmethod
-    def today():
+    def today_():
         return str(datetime.date.today())
 
     def __logger_setting(self) -> None:
@@ -538,12 +538,53 @@ class Netflix(object):
 
         return None
 
+    @staticmethod
+    def time_diff(start_time, end_time):
+        """
+        计算时间间隔
+        :param start_time: 开始时间戳
+        :param end_time: 结束时间戳
+        :return:
+        """
+        diff_time = end_time - start_time
+
+        if diff_time < 0:
+            raise ValueError('结束时间必须大于等于开始时间')
+
+        if diff_time < 1:
+            return '{:.2f}秒'.format(diff_time)
+        else:
+            diff_time = int(diff_time)
+
+        if diff_time < 60:
+            return '{:02d}秒'.format(diff_time)
+        elif 60 <= diff_time < 3600:
+            m, s = divmod(diff_time, 60)
+
+            return '{:02d}分钟{:02d}秒'.format(m, s)
+        elif 3600 <= diff_time < 24 * 3600:
+            m, s = divmod(diff_time, 60)
+            h, m = divmod(m, 60)
+
+            return '{:02d}小时{:02d}分钟{:02d}秒'.format(h, m, s)
+        elif 24 * 3600 <= diff_time:
+            m, s = divmod(diff_time, 60)
+            h, m = divmod(m, 60)
+            d, h = divmod(h, 24)
+
+            return '{:02d}天{:02d}小时{:02d}分钟{:02d}秒'.format(d, h, m, s)
+
     @catch_exception
     def run(self):
         logger.info('开始监听密码被改邮件')
 
         # 监听密码被改邮件
         while True:
+            real_today = Netflix.today_()
+            if self.today != real_today:
+                self.today = real_today
+                self.__logger_setting()
+
             self.redis = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
             self.redis.set_response_callback('GET', int)
 
@@ -553,6 +594,8 @@ class Netflix(object):
 
                 for future in as_completed(all_tasks):
                     try:
+                        start_time = time.time()
+
                         p = all_tasks[future]
                         netflix_account_email = future.result()
 
@@ -574,6 +617,8 @@ class Netflix(object):
 
                             # 重置密码
                             self.__reset_password_via_mail(reset_link, p)
+
+                            logger.info(f'今次自动重置密码耗时{Netflix.time_diff(start_time, time.time())}')
                     except Exception as e:
                         logger.error('出错：{}', str(e))
 
