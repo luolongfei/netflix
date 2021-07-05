@@ -145,6 +145,12 @@ class Netflix(object):
         # 获取最近几天的邮件
         self.day = 3
 
+        # 最多等待几分钟重置邮件的到来
+        self.max_wait_reset_mail_time = 10
+
+        # 恢复密码失败后最多重试几次
+        self.max_retry = 5
+
         self.first_time = []
         self.today = Netflix.today_()
 
@@ -179,7 +185,7 @@ class Netflix(object):
     @staticmethod
     def check_py_version(major=3, minor=6):
         if sys.version_info < (major, minor):
-            raise UserWarning(f'请使用 python {major}.{minor} 及以上版本，推荐使用 python 3.8.3')
+            raise UserWarning(f'请使用 python {major}.{minor} 及以上版本，推荐使用 python 3.8.2')
 
     @staticmethod
     def get_all_args():
@@ -190,6 +196,7 @@ class Netflix(object):
         parser = argparse.ArgumentParser(description='Netflix 的各种参数及其含义', epilog='')
         parser.add_argument('-mw', '--max_workers', help='最大线程数', default=1, type=int)
         parser.add_argument('-d', '--debug', help='是否开启 Debug 模式', action='store_true')
+        parser.add_argument('-f', '--force', help='是否强制执行', action='store_true')
 
         return parser.parse_args()
 
@@ -512,9 +519,14 @@ class Netflix(object):
                             return None
 
                         if netflix_account_email not in self.first_time:
-                            logger.info(f'首次运行，故今次检测账户 {netflix_account_email}，发现的都是一些旧的密码被重置的邮件，不做处理')
-
                             self.first_time.append(netflix_account_email)
+
+                            if self.args.force:
+                                logger.info(f'强制运行，检测到账户 {netflix_account_email} 存在密码被重置的邮件，已触发密码重置流程')
+
+                                return netflix_account_email
+
+                            logger.info(f'首次运行，故今次检测账户 {netflix_account_email}，发现的都是一些旧的密码被重置的邮件，不做处理')
 
                             return None
 
@@ -530,7 +542,7 @@ class Netflix(object):
                             raise Exception('已命中重置密码邮件，但是未能正确提取重置密码链接，请调查一下')
 
                         logger.info('已成功提取重置密码链接')
-                        logger.debug(f'本次重置链接为：{match.group(0)} ID：{id}')
+                        logger.info(f'本次重置链接为：{match.group(0)} ID：{id}')
 
                         return match.group(0)
                 else:
@@ -574,6 +586,62 @@ class Netflix(object):
 
             return '{:02d}天{:02d}小时{:02d}分钟{:02d}秒'.format(d, h, m, s)
 
+    def __do_reset(self, netflix_account_email: str, p: str):
+        """
+        执行重置密码流程
+        :param netflix_account_email:
+        :param p:
+        :return:
+        """
+        start_time = time.time()
+
+        self.__forgot_password(netflix_account_email)
+
+        logger.info('等待接收重置密码链接')
+
+        # 坐等奈飞发送的重置密码链接
+        wait_start_time = time.time()
+        while True:
+            reset_link = self.__fetch_mail(netflix_account_email, 1)
+
+            if reset_link:
+                self.redis.set(f'{netflix_account_email}.need_to_do', 0)  # 忽略下一封密码重置邮件
+
+                break
+
+            if (time.time() - wait_start_time) > 60 * self.max_wait_reset_mail_time:
+                raise Exception(f'等待超过 {self.max_wait_reset_mail_time} 分钟，依然没有收到奈飞的重置密码来信，故将重走恢复密码流程')
+
+            time.sleep(2)
+
+        # 重置密码
+        self.__reset_password_via_mail(reset_link, p)
+
+        logger.info(f'今次自动重置密码耗时{Netflix.time_diff(start_time, time.time())}')
+
+    @staticmethod
+    def now(format='%Y-%m-%d %H:%M:%S.%f'):
+        """
+        当前时间
+        精确到毫秒
+        :return:
+        """
+        return datetime.datetime.now().strftime(format)[:-3]
+
+    def __screenshot(self, filename: str):
+        """
+        截图
+        :param filename:
+        :return:
+        """
+        dir = os.path.dirname(filename)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        self.driver.save_screenshot(filename)
+
+        return True
+
     @catch_exception
     def run(self):
         logger.info('开始监听密码被改邮件')
@@ -594,31 +662,28 @@ class Netflix(object):
 
                 for future in as_completed(all_tasks):
                     try:
-                        start_time = time.time()
-
                         p = all_tasks[future]
                         netflix_account_email = future.result()
 
                         if netflix_account_email:
-                            self.__forgot_password(netflix_account_email)
+                            for i in range(0, self.max_retry):
+                                try:
+                                    if i:
+                                        logger.info(f'第 {i} 次重试恢复密码')
 
-                            # 坐等奈飞发送的重置密码链接
-                            while True:
-                                logger.debug('等待接收重置密码链接')
-
-                                reset_link = self.__fetch_mail(netflix_account_email, 1)
-
-                                if reset_link:
-                                    self.redis.set(f'{netflix_account_email}.need_to_do', 0)  # 忽略下一封密码重置邮件
+                                    self.__do_reset(netflix_account_email, p)
 
                                     break
+                                except Exception as e:
+                                    self.redis.set(f'{netflix_account_email}.need_to_do', 1)  # 恢复检测
 
-                                time.sleep(2)
+                                    screenshot_file = f'logs/screenshots/{netflix_account_email}/{self.now("%Y-%m-%d_%H_%M_%S_%f")}.png'
+                                    self.__screenshot(screenshot_file)
+                                    logger.info(f'出错画面已被截图，图片文件保存在：{screenshot_file}')
 
-                            # 重置密码
-                            self.__reset_password_via_mail(reset_link, p)
-
-                            logger.info(f'今次自动重置密码耗时{Netflix.time_diff(start_time, time.time())}')
+                                    logger.error(f'密码恢复过程出错：{str(e)}，即将重试')
+                            else:
+                                logger.info(f'一共尝试 {self.max_retry} 次，均无法自动恢复密码，需要人工介入')
                     except Exception as e:
                         logger.error('出错：{}', str(e))
 
