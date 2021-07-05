@@ -36,6 +36,12 @@ import imaplib
 import email
 from email.header import decode_header
 import redis
+import ssl
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
 
 
 def catch_exception(origin_func):
@@ -78,6 +84,8 @@ class Netflix(object):
 
     RESET_MAIL_REGEX = re.compile(r'accountaccess.*?URL_ACCOUNT_ACCESS', re.I)
     RESET_URL_REGEX = re.compile(r'https://www\.netflix\.com.*?URL_PASSWORD', re.I)
+
+    MAIL_SYMBOL_REGEX = re.compile('{(?!})|(?<!{)}')
 
     def __init__(self):
         Netflix.check_py_version()
@@ -642,6 +650,88 @@ class Netflix(object):
 
         return True
 
+    @staticmethod
+    def symbol_replace(val):
+        real_val = val.group()
+        if real_val == '{':
+            return '@<@'
+        elif real_val == '}':
+            return '@>@'
+        else:
+            return ''
+
+    @staticmethod
+    def send_mail(subject: str, content: str or tuple, to=None, template='default') -> None:
+        """
+        发送邮件
+        :param subject:
+        :param content:
+        :param to:
+        :param template:
+        :return:
+        """
+        if not to:
+            to = os.getenv('INBOX')
+            assert to, '尚未在 .env 文件中检测到 INBOX 的值，请配置之'
+
+        # 发信邮箱账户
+        username = os.getenv('BOT_MAIL_USERNAME')
+        password = os.getenv('BOT_MAIL_PASSWORD')
+
+        # 根据发信邮箱类型自动使用合适的配置
+        if '@gmail.com' in username:
+            host = 'smtp.gmail.com'
+            secure = 'tls'
+            port = 587
+        elif '@qq.com' in username:
+            host = 'smtp.qq.com'
+            secure = 'tls'
+            port = 587
+        elif '@163.com' in username:
+            host = 'smtp.163.com'
+            secure = 'ssl'
+            port = 465
+        else:
+            raise ValueError(f'「{username}」 是不受支持的邮箱。目前仅支持谷歌邮箱、QQ邮箱以及163邮箱，推荐使用谷歌邮箱。')
+
+        # 格式化邮件内容
+        if isinstance(content, tuple):
+            with open('./mail/{}.html'.format(template), 'r', encoding='utf-8') as f:
+                template_content = f.read()
+                text = Netflix.MAIL_SYMBOL_REGEX.sub(Netflix.symbol_replace, template_content).format(*content)
+                real_content = text.replace('@<@', '{').replace('@>@', '}')
+        elif isinstance(content, str):
+            real_content = content
+        else:
+            raise TypeError(f'邮件内容类型仅支持 list 或 str，当前传入的类型为 {type(content)}')
+
+        # 邮件内容有多个部分
+        msg = MIMEMultipart('alternative')
+
+        msg['From'] = formataddr(('Im Robot', username))
+        msg['To'] = formataddr(('', to))
+        msg['Subject'] = subject
+
+        # 添加网页
+        page = MIMEText(real_content, 'html', 'utf-8')
+        msg.attach(page)
+
+        # 添加 html 内联图片，仅适配模板中头像
+        if isinstance(content, tuple):
+            with open('mail/images/ting.jpg', 'rb') as img:
+                avatar = MIMEImage(img.read())
+                avatar.add_header('Content-ID', '<avatar>')
+                msg.attach(avatar)
+
+        with smtplib.SMTP_SSL(host=host, port=port) if secure == 'ssl' else smtplib.SMTP(host=host,
+                                                                                         port=port) as server:
+            # 启用 tls 加密，优于 ssl
+            if secure == 'tls':
+                server.starttls(context=ssl.create_default_context())
+
+            server.login(username, password)
+            server.sendmail(from_addr=username, to_addrs=to, msg=msg.as_string())
+
     @catch_exception
     def run(self):
         logger.info('开始监听密码被改邮件')
@@ -673,6 +763,9 @@ class Netflix(object):
 
                                     self.__do_reset(netflix_account_email, p)
 
+                                    Netflix.send_mail(f'发现有人修改了 Netflix 账户 {netflix_account_email} 的密码，我已自动将密码恢复初始状态',
+                                                      f'在 {self.now()} 已将密码恢复为初始状态，本次自动处理成功。')
+
                                     break
                                 except Exception as e:
                                     self.redis.set(f'{netflix_account_email}.need_to_do', 1)  # 恢复检测
@@ -684,6 +777,9 @@ class Netflix(object):
                                     logger.error(f'密码恢复过程出错：{str(e)}，即将重试')
                             else:
                                 logger.info(f'一共尝试 {self.max_retry} 次，均无法自动恢复密码，需要人工介入')
+
+                                Netflix.send_mail('主人，多次尝试自动恢复密码均以失败告终，请您调查一下',
+                                                  f'一共尝试了 {self.max_retry} 次，均无法自动恢复密码，需要人工介入。<br>每一次失败的原因我已写入日志，错误画面的截图也已经保存。<br><br>机器人敬上')
                     except Exception as e:
                         logger.error('出错：{}', str(e))
 
