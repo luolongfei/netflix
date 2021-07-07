@@ -7,7 +7,7 @@ Netflix
 监听奈飞（netflix）密码变更邮件，自动重置密码。
 
 流程：实时监听邮件，发现有人修改了密码 -> 访问奈飞，点击忘记密码 -> 等待接收奈飞的重置密码邮件 -> 收到重置密码邮件，访问邮件内的链接，
-进行密码重置操作，使用随机密码 -> 修改后回到正常的密码修改页面，将密码再次修改为原始值
+进行密码重置操作，恢复初始密码
 
 @author mybsdc <mybsdc@gmail.com>
 @date 2021/6/29
@@ -23,6 +23,7 @@ import json
 import re
 import datetime
 import traceback
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException
@@ -38,10 +39,12 @@ from email.header import decode_header
 import redis
 import ssl
 import smtplib
+from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
+from email import encoders
 
 
 def catch_exception(origin_func):
@@ -652,21 +655,27 @@ class Netflix(object):
 
     @staticmethod
     def symbol_replace(val):
+        """
+        转义花括符
+        :param val:
+        :return:
+        """
         real_val = val.group()
         if real_val == '{':
-            return '@<@'
+            return '{{'
         elif real_val == '}':
-            return '@>@'
+            return '}}'
         else:
             return ''
 
     @staticmethod
-    def send_mail(subject: str, content: str or tuple, to=None, template='default') -> None:
+    def send_mail(subject: str, content: str or list, to=None, files=[], template='default') -> None:
         """
         发送邮件
         :param subject:
         :param content:
         :param to:
+        :param files:
         :param template:
         :return:
         """
@@ -695,17 +704,17 @@ class Netflix(object):
             raise ValueError(f'「{username}」 是不受支持的邮箱。目前仅支持谷歌邮箱、QQ邮箱以及163邮箱，推荐使用谷歌邮箱。')
 
         # 格式化邮件内容
-        if isinstance(content, tuple):
+        if isinstance(content, list):
             with open('./mail/{}.html'.format(template), 'r', encoding='utf-8') as f:
                 template_content = f.read()
                 text = Netflix.MAIL_SYMBOL_REGEX.sub(Netflix.symbol_replace, template_content).format(*content)
-                real_content = text.replace('@<@', '{').replace('@>@', '}')
+                real_content = text.replace('{{', '{').replace('}}', '}')
         elif isinstance(content, str):
             real_content = content
         else:
             raise TypeError(f'邮件内容类型仅支持 list 或 str，当前传入的类型为 {type(content)}')
 
-        # 邮件内容有多个部分
+        # 邮件内容设置多个部分
         msg = MIMEMultipart('alternative')
 
         msg['From'] = formataddr(('Im Robot', username))
@@ -716,12 +725,32 @@ class Netflix(object):
         page = MIMEText(real_content, 'html', 'utf-8')
         msg.attach(page)
 
+        # 添加纯文本内容（针对不支持 html 的邮件客户端）
+        if isinstance(content, str):  # 仅当传入内容是纯文本才添加纯文本内容，因为一般传入 list 的情况下，我只想发送 html 内容，此处根据实际需求可做修改
+            text = MIMEText(content, 'plain', 'utf-8')
+            msg.attach(text)
+
         # 添加 html 内联图片，仅适配模板中头像
-        if isinstance(content, tuple):
+        if isinstance(content, list):
             with open('mail/images/ting.jpg', 'rb') as img:
                 avatar = MIMEImage(img.read())
                 avatar.add_header('Content-ID', '<avatar>')
                 msg.attach(avatar)
+
+        # 添加附件
+        for path in files:  # 注意，如果文件尺寸为 0 会被忽略
+            if not os.path.exists(path):
+                logger.error(f'发送邮件时，发现要添加的附件（{path}）不存在，本次已忽略此附件')
+
+                continue
+
+            part = MIMEBase('application', 'octet-stream')
+            with open(path, 'rb') as file:
+                part.set_payload(file.read())
+
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', 'attachment; filename="{}"'.format(Path(path).name))
+            msg.attach(part)
 
         with smtplib.SMTP_SSL(host=host, port=port) if secure == 'ssl' else smtplib.SMTP(host=host,
                                                                                          port=port) as server:
@@ -764,7 +793,7 @@ class Netflix(object):
                                     self.__do_reset(netflix_account_email, p)
 
                                     Netflix.send_mail(f'发现有人修改了 Netflix 账户 {netflix_account_email} 的密码，我已自动将密码恢复初始状态',
-                                                      f'在 {self.now()} 已将密码恢复为初始状态，本次自动处理成功。')
+                                                      [f'程式在 {self.now()} 已将密码恢复为初始状态，本次自动处理成功。'])
 
                                     break
                                 except Exception as e:
@@ -772,14 +801,21 @@ class Netflix(object):
 
                                     screenshot_file = f'logs/screenshots/{netflix_account_email}/{self.now("%Y-%m-%d_%H_%M_%S_%f")}.png'
                                     self.__screenshot(screenshot_file)
-                                    logger.info(f'出错画面已被截图，图片文件保存在：{screenshot_file}')
 
+                                    logger.info(f'出错画面已被截图，图片文件保存在：{screenshot_file}')
                                     logger.error(f'密码恢复过程出错：{str(e)}，即将重试')
+
+                                    Netflix.send_mail('主人，程式尝试自动恢复密码失败了，别担心，即将自动重试',
+                                                      [
+                                                          '刚刚尝试自动恢复密码失败了，我已将今天的日志以及这次出错画面的截图作为附件发送给您，请查收。<br>不过无需担心，程序将自动重试恢复密码。'],
+                                                      files=[f'logs/{Netflix.now("%Y-%m-%d")}.log', screenshot_file])
                             else:
                                 logger.info(f'一共尝试 {self.max_retry} 次，均无法自动恢复密码，需要人工介入')
 
                                 Netflix.send_mail('主人，多次尝试自动恢复密码均以失败告终，请您调查一下',
-                                                  f'一共尝试了 {self.max_retry} 次，均无法自动恢复密码，需要人工介入。<br>每一次失败的原因我已写入日志，错误画面的截图也已经保存。<br><br>机器人敬上')
+                                                  [
+                                                      f'程式一共尝试了 {self.max_retry} 次，均无法自动恢复密码，需要人工介入。<br>每一次失败的原因我已写入日志，且已作为附件发送给您。另外，错误画面的截图也已经保存。'],
+                                                  files=[f'logs/{Netflix.now("%Y-%m-%d")}.log'])
                     except Exception as e:
                         logger.error('出错：{}', str(e))
 
