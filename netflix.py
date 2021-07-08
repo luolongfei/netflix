@@ -628,7 +628,10 @@ class Netflix(object):
         # 重置密码
         self.__reset_password_via_mail(reset_link, p)
 
-        logger.info(f'今次自动重置密码耗时{Netflix.time_diff(start_time, time.time())}')
+        spend_time = Netflix.time_diff(start_time, time.time())
+        logger.info(f'今次自动重置密码耗时{spend_time}')
+
+        return spend_time
 
     @staticmethod
     def now(format='%Y-%m-%d %H:%M:%S.%f'):
@@ -669,7 +672,7 @@ class Netflix(object):
             return ''
 
     @staticmethod
-    def send_mail(subject: str, content: str or list, to: str = None, files: list = [], text: str = '',
+    def send_mail(subject: str, content: str or list, to: str = None, files: list = [], text_plain: str = '',
                   template='default') -> None:
         """
         发送邮件
@@ -677,7 +680,7 @@ class Netflix(object):
         :param content:
         :param to:
         :param files:
-        :param text:
+        :param text_plain: 纯文本，可选
         :param template:
         :return:
         """
@@ -723,16 +726,22 @@ class Netflix(object):
         msg['To'] = formataddr(('', to))
         msg['Subject'] = subject
 
+        # 添加纯文本内容（针对不支持 html 的邮件客户端）
+        # 注意：当同时包含纯文本和 html 时，一定要先添加纯文本再添加 html，因为一般邮件客户端默认优先展示最后添加的部分
+        # https://realpython.com/python-send-email/
+        # https://docs.python.org/3/library/email.mime.html
+        # As not all email clients display HTML content by default, and some people choose only to receive plain-text emails for security reasons,
+        # it is important to include a plain-text alternative for HTML messages. As the email client will render the last multipart attachment first,
+        # make sure to add the HTML message after the plain-text version.
+        if text_plain:
+            msg.attach(MIMEText(text_plain, 'plain', 'utf-8'))
+        elif isinstance(content, str):  # 仅当传入内容是纯文本才添加纯文本内容，因为一般传入 list 的情况下，我只想发送 html 内容
+            text_plain = MIMEText(content, 'plain', 'utf-8')
+            msg.attach(text_plain)
+
         # 添加网页
         page = MIMEText(real_content, 'html', 'utf-8')
         msg.attach(page)
-
-        # 添加纯文本内容（针对不支持 html 的邮件客户端）
-        if text:
-            msg.attach(MIMEText(text, 'plain', 'utf-8'))
-        elif isinstance(content, str):  # 仅当传入内容是纯文本才添加纯文本内容，因为一般传入 list 的情况下，我只想发送 html 内容，此处根据实际需求可做修改
-            text = MIMEText(content, 'plain', 'utf-8')
-            msg.attach(text)
 
         # 添加 html 内联图片，仅适配模板中头像
         if isinstance(content, list):
@@ -794,10 +803,10 @@ class Netflix(object):
                                     if i:
                                         logger.info(f'第 {i} 次重试恢复密码')
 
-                                    self.__do_reset(netflix_account_email, p)
+                                    spend_time = self.__do_reset(netflix_account_email, p)
 
                                     Netflix.send_mail(f'发现有人修改了 Netflix 账户 {netflix_account_email} 的密码，我已自动将密码恢复初始状态',
-                                                      [f'程式在 {self.now()} 已将密码恢复为初始状态，本次自动处理成功。'])
+                                                      [f'程式在 {self.now()} 已将密码恢复为初始状态，共耗时{spend_time}，本次自动处理成功。'])
 
                                     break
                                 except Exception as e:
