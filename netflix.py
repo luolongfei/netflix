@@ -640,7 +640,9 @@ class Netflix(object):
         精确到毫秒
         :return:
         """
-        return datetime.datetime.now().strftime(format)[:-3]
+        now = datetime.datetime.now().strftime(format)
+
+        return now[:-3] if '%f' in format else now
 
     def __screenshot(self, filename: str):
         """
@@ -820,7 +822,7 @@ class Netflix(object):
 
                                     Netflix.send_mail(f'主人，程式尝试自动恢复账户 {netflix_account_email} 的密码失败了，别担心，即将自动重试',
                                                       [
-                                                          f'刚刚尝试自动恢复密码失败了，捕获的异常消息为：{str(e)}。我已将今天的日志以及这次出错画面的截图作为附件发送给您，请查收。<br><br>不过无需担心，程序将自动重试恢复密码。'],
+                                                          f'刚刚尝试自动恢复密码失败了，捕获的异常消息为：{str(e)}。<br>我已将今天的日志以及这次出错画面的截图作为附件发送给您，请查收。<br><br>不过无需担心，程序将自动重试恢复密码。'],
                                                       files=[f'logs/{Netflix.now("%Y-%m-%d")}.log', screenshot_file])
                             else:
                                 logger.info(f'一共尝试 {self.max_retry} 次，均无法自动恢复密码，需要人工介入')
