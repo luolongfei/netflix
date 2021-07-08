@@ -207,7 +207,7 @@ class Netflix(object):
         parser = argparse.ArgumentParser(description='Netflix 的各种参数及其含义', epilog='')
         parser.add_argument('-mw', '--max_workers', help='最大线程数', default=1, type=int)
         parser.add_argument('-d', '--debug', help='是否开启 Debug 模式', action='store_true')
-        parser.add_argument('-f', '--force', help='是否强制执行', action='store_true')
+        parser.add_argument('-f', '--force', help='是否强制执行，当然也要满足有“新的密码被重置的邮件”的条件', action='store_true')
 
         return parser.parse_args()
 
