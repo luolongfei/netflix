@@ -114,7 +114,8 @@ class Netflix(object):
         # self.options.add_argument('--start-maximized')
         self.options.add_argument('--window-size=1366,768')
 
-        # self.options.add_argument('--headless')  # 启用无头模式
+        if self.args.headless:
+            self.options.add_argument('--headless')  # 启用无头模式
         self.options.add_argument('--disable-gpu')  # 谷歌官方文档说加上此参数可减少 bug，仅适用于 Windows 系统
 
         # 解决 unknown error: DevToolsActivePort file doesn't exist
@@ -126,16 +127,17 @@ class Netflix(object):
         self.driver.implicitly_wait(Netflix.TIMEOUT)
 
         # 防止通过 window.navigator.webdriver === true 检测模拟浏览器
+        # 注意，低于 Chrome v88 （不含） 的浏览器可用此处代码隐藏 Web Driver 特征
         # 参考：
         # https://www.selenium.dev/selenium/docs/api/py/webdriver_chrome/selenium.webdriver.chrome.webdriver.html#selenium.webdriver.chrome.webdriver.WebDriver.execute_cdp_cmd
         # https://chromedevtools.github.io/devtools-protocol/tot/Page/#method-addScriptToEvaluateOnNewDocument
-        self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-            "source": """
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                })
-            """
-        })
+        # self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+        #     "source": """
+        #         Object.defineProperty(navigator, 'webdriver', {
+        #             get: () => undefined
+        #         })
+        #     """
+        # })
 
         # 隐藏无头浏览器特征，增加检测难度
         with open('resources/stealth.min.js') as f:
@@ -147,6 +149,23 @@ class Netflix(object):
 
         # 统配显式等待
         self.wait = WebDriverWait(self.driver, timeout=Netflix.TIMEOUT, poll_frequency=0.5)
+
+        # 测试无头浏览器特征是否正确隐藏
+        if self.args.test:
+            logger.info('开始测试无头浏览器特征是否正确隐藏')
+
+            self.driver.get('https://bot.sannysoft.com/')
+
+            time.sleep(3.5)
+
+            filename = 'bot_test.png'
+            self.__screenshot(filename, True)
+
+            self.driver.quit()
+
+            logger.info(f'已测试完成，测试结果保存在 {filename}')
+
+            exit(0)
 
         self.BOT_MAIL_USERNAME = os.getenv('BOT_MAIL_USERNAME')
         self.BOT_MAIL_PASSWORD = os.getenv('BOT_MAIL_PASSWORD')
@@ -208,6 +227,8 @@ class Netflix(object):
         parser.add_argument('-mw', '--max_workers', help='最大线程数', default=1, type=int)
         parser.add_argument('-d', '--debug', help='是否开启 Debug 模式', action='store_true')
         parser.add_argument('-f', '--force', help='是否强制执行，当然也要满足有“新的密码被重置的邮件”的条件', action='store_true')
+        parser.add_argument('-t', '--test', help='测试无头浏览器特征是否正确隐藏', action='store_true')
+        parser.add_argument('-hl', '--headless', help='是否启用无头模式', action='store_true')
 
         return parser.parse_args()
 
@@ -644,15 +665,32 @@ class Netflix(object):
 
         return now[:-3] if '%f' in format else now
 
-    def __screenshot(self, filename: str):
+    def __screenshot(self, filename: str, full_page=False):
         """
         截图
         :param filename:
+        :param full_page: 仅无头模式支持截取全屏
         :return:
         """
         dir = os.path.dirname(filename)
-        if not os.path.exists(dir):
+        if dir and not os.path.exists(dir):
             os.makedirs(dir)
+
+        if full_page:
+            if not self.args.headless:
+                raise Exception('仅无头模式支持全屏截图，请跟上 -hl 参数后重试')
+
+            original_size = self.driver.get_window_size()
+            required_width = self.driver.execute_script('return document.body.parentNode.scrollWidth')
+            required_height = self.driver.execute_script('return document.body.parentNode.scrollHeight')
+
+            self.driver.set_window_size(required_width, required_height)
+
+            self.driver.find_element_by_tag_name('body').screenshot(filename)  # 通过 body 元素截图可隐藏滚动条
+
+            self.driver.set_window_size(original_size['width'], original_size['height'])
+
+            return True
 
         self.driver.save_screenshot(filename)
 
