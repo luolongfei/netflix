@@ -114,7 +114,7 @@ class Netflix(object):
         # self.options.add_argument('--start-maximized')
         self.options.add_argument('--window-size=1366,768')
 
-        if self.args.headless:
+        if self.args.headless or self.args.test:
             self.options.add_argument('--headless')  # 启用无头模式
         self.options.add_argument('--disable-gpu')  # 谷歌官方文档说加上此参数可减少 bug，仅适用于 Windows 系统
 
@@ -152,6 +152,7 @@ class Netflix(object):
 
         # 测试无头浏览器特征是否正确隐藏
         if self.args.test:
+            logger.info('测试过程将只以无头模式进行')
             logger.info('开始测试无头浏览器特征是否正确隐藏')
 
             self.driver.get('https://bot.sannysoft.com/')
@@ -677,7 +678,7 @@ class Netflix(object):
             os.makedirs(dir)
 
         if full_page:
-            if not self.args.headless:
+            if not self.args.headless and not self.args.test:  # 若跟上 -t 参数则默认使用无头模式，可不传 -hl
                 raise Exception('仅无头模式支持全屏截图，请跟上 -hl 参数后重试')
 
             original_size = self.driver.get_window_size()
