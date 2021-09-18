@@ -606,6 +606,8 @@ class Netflix(object):
         """
         # 拉取最新邮件
         resp = self.__fetch_mail(netflix_account_email)
+        if not resp:
+            return None
 
         # 定义事件类型 0：未知 1：用户恶意修改密码 2：Netflix 强迫用户修改密码
         event_type = 0
