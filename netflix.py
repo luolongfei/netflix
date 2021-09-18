@@ -19,6 +19,7 @@ import sys
 import time
 import argparse
 import random
+import string
 import json
 import re
 import datetime
@@ -87,6 +88,9 @@ class Netflix(object):
 
     RESET_MAIL_REGEX = re.compile(r'accountaccess.*?URL_ACCOUNT_ACCESS', re.I)
     RESET_URL_REGEX = re.compile(r'https://www\.netflix\.com.*?URL_PASSWORD', re.I)
+
+    # 奈飞强迫用户修改密码
+    FORCE_CHANGE_PASSWORD_REGEX = re.compile(r'https?://www\.netflix\.com/LoginHelp.*?lkid=URL_LOGIN_HELP', re.I)
 
     MAIL_SYMBOL_REGEX = re.compile('{(?!})|(?<!{)}')
 
@@ -493,11 +497,66 @@ class Netflix(object):
         """
         return Netflix.RESET_MAIL_REGEX.search(text) is not None
 
-    def __fetch_mail(self, netflix_account_email: str, mail_type: int = 0) -> str or None:
+    @staticmethod
+    def is_force_change_password_request(text: str):
+        """
+        是否奈飞强迫修改密码的邮件
+        :param text:
+        :return:
+        """
+        return Netflix.FORCE_CHANGE_PASSWORD_REGEX.search(text) is not None
+
+    def get_mail_last_id(self, netflix_account_email: str):
+        """
+        获取最新的邮件 ID
+        :param netflix_account_email:
+        :return:
+        """
+        key_last_id = f'{netflix_account_email}.last_id'
+        last_id = self.redis.get(key_last_id) if self.redis.exists(key_last_id) else 0
+
+        return last_id
+
+    def set_mail_last_id(self, netflix_account_email: str, id: int) -> bool:
+        """
+        设置最新的邮件 ID
+        :param netflix_account_email:
+        :param id:
+        :return:
+        """
+        key_last_id = f'{netflix_account_email}.last_id'
+        self.redis.set(key_last_id, id)
+
+        return True
+
+    def is_need_to_do(self, netflix_account_email: str) -> int:
+        """
+        是否需要做处理
+        :param netflix_account_email:
+        :return:
+        """
+        key_need_to_do = f'{netflix_account_email}.need_to_do'
+        need_to_do = self.redis.get(key_need_to_do) if self.redis.exists(key_need_to_do) else 1
+
+        return need_to_do
+
+    def set_need_to_do(self, netflix_account_email: str, status: int = 1) -> bool:
+        """
+        设置是否需要做处理
+        :param netflix_account_email:
+        :param status: 1：需要 0：不需要
+        :return:
+        """
+        key_need_to_do = f'{netflix_account_email}.need_to_do'
+        self.redis.set(key_need_to_do, status)
+
+        return True
+
+    def __fetch_mail(self, netflix_account_email: str, onlySubject: bool = False) -> str or None:
         """
         拉取邮件
         :param netflix_account_email:
-        :param mail_type: 支持传入 0 或 1，0 表示密码重置结果邮件，1 表示请求重置密码邮件
+        :param onlySubject:
         :return:
         """
         logger.debug('尝试拉取最新邮件，以监听是否有重置密码相关的邮件')
@@ -515,9 +574,7 @@ class Netflix(object):
             if status != 'OK':
                 raise Exception('通过发信人以及送信时间过滤邮件时出错')
 
-            key_last_id = f'{netflix_account_email}.last_id'
-            last_id = self.redis.get(key_last_id) if self.redis.exists(key_last_id) else 0
-
+            last_id = self.get_mail_last_id(netflix_account_email)
             data = data[0].split()[::-1]
             for num in data:
                 id = int(num)
@@ -531,55 +588,89 @@ class Netflix(object):
                     continue
 
                 # 解析邮件
-                resp = Netflix.parse_mail(mail_data[0][1], mail_type == 0)
+                resp = Netflix.parse_mail(mail_data[0][1], onlySubject)
 
-                if mail_type == 0:
-                    # 检测到有人修改了密码
-                    if Netflix.is_password_reset_result(resp):
-                        logger.info('检测到有人修改了 Netflix 账户 {} 的密码', netflix_account_email)
+                # 记录邮件 ID，之后此邮箱的此类型邮件必须大于此 ID 才有效，且此 ID 跟随 Netflix 账户
+                self.set_mail_last_id(netflix_account_email, id)
 
-                        # 记录邮件 ID，之后此邮箱的此类型邮件必须大于此 ID 才有效
-                        self.redis.set(key_last_id, id)
+                return resp
 
-                        key_need_to_do = f'{netflix_account_email}.need_to_do'
-                        need_to_do = self.redis.get(key_need_to_do) if self.redis.exists(key_need_to_do) else 1
+        return None
 
-                        if not need_to_do:
-                            logger.info('今次检测到的密码重置结果邮件应是脚本的动作回执，故不做处理')
+    def pwd_result_mail_listener(self, netflix_account_email: str):
+        """
+        监听密码重置结果邮件
+        既可能是恶意用户，也可能是 Netflix 强迫用户重置密码而发来的邮件，借此触发我们后续流程
+        :param netflix_account_email:
+        :return:
+        """
+        # 拉取最新邮件
+        resp = self.__fetch_mail(netflix_account_email)
 
-                            self.redis.set(key_need_to_do, 1)
+        # 定义事件类型 0：未知 1：用户恶意修改密码 2：Netflix 强迫用户修改密码
+        event_type = 0
 
-                            return None
+        if Netflix.is_password_reset_result(resp):  # 检测到有用户恶意修改密码
+            logger.info('检测到有人修改了 Netflix 账户 {} 的密码', netflix_account_email)
 
-                        if netflix_account_email not in self.first_time:
-                            self.first_time.append(netflix_account_email)
+            event_type = 1
+            need_to_do = self.is_need_to_do(netflix_account_email)
+            if not need_to_do:
+                logger.info('今次检测到的密码重置结果邮件应是脚本的动作回执，故不做处理')
 
-                            if self.args.force:
-                                logger.info(f'强制运行，检测到账户 {netflix_account_email} 存在密码被重置的邮件，已触发密码重置流程')
+                self.set_need_to_do(netflix_account_email, 1)
 
-                                return netflix_account_email
+                return None
 
-                            logger.info(f'首次运行，故今次检测账户 {netflix_account_email}，发现的都是一些旧的密码被重置的邮件，不做处理')
+            # 处理首次运行程式的情形
+            if netflix_account_email not in self.first_time:
+                self.first_time.append(netflix_account_email)
 
-                            return None
+                if self.args.force:
+                    logger.info(f'强制运行，检测到账户 {netflix_account_email} 存在密码被重置的邮件，已触发密码重置流程')
 
-                        return netflix_account_email
-                elif mail_type == 1:
-                    if self.is_password_reset_request(resp['text']):
-                        logger.info('Netflix 账户 {} 已收到请求重置密码的邮件，开始提取重置链接', netflix_account_email)
+                    return True, event_type
 
-                        self.redis.set(key_last_id, id)
+                logger.info(f'首次运行，故今次检测账户 {netflix_account_email}，发现的都是一些旧的密码被重置的邮件，不做处理')
 
-                        match = Netflix.RESET_URL_REGEX.search(resp['text'])
-                        if not match:
-                            raise Exception('已命中重置密码邮件，但是未能正确提取重置密码链接，请调查一下')
+                return None
 
-                        logger.info('已成功提取重置密码链接')
-                        logger.info(f'本次重置链接为：{match.group(0)} ID：{id}')
+            return True, event_type
+        elif Netflix.is_force_change_password_request(resp):  # 检测到奈飞强迫用户修改密码
+            logger.info('检测到 Netflix 以安全起见，强迫用户修改账户 {} 的密码', netflix_account_email)
+            logger.info('开始提取密码重置链接')
 
-                        return match.group(0)
-                else:
-                    raise Exception('mail_type 仅支持传入 0 或 1，0 表示密码重置结果邮件，1 表示请求重置密码邮件')
+            event_type = 2
+            match = Netflix.FORCE_CHANGE_PASSWORD_REGEX.search(resp['text'])
+            if not match:
+                raise Exception('未能正确提取重置密码链接，请调查一下')
+
+            logger.info('已成功提取重置密码链接')
+            logger.info(f'本次重置链接为：{match.group(0)}')
+
+            return match.group(0), event_type
+
+    def pwd_reset_request_mail_listener(self, netflix_account_email) -> str or None:
+        """
+        监听请求重置密码的邮件
+        在发起重置密码动作后，我们会收到 Netflix 的邮件
+        :param netflix_account_email:
+        :return:
+        """
+        # 拉取最新邮件
+        resp = self.__fetch_mail(netflix_account_email)
+
+        if self.is_password_reset_request(resp['text']):
+            logger.info('Netflix 账户 {} 已收到请求重置密码的邮件，开始提取重置链接', netflix_account_email)
+
+            match = Netflix.RESET_URL_REGEX.search(resp['text'])
+            if not match:
+                raise Exception('已命中重置密码邮件，但是未能正确提取重置密码链接，请调查一下')
+
+            logger.info('已成功提取重置密码链接')
+            logger.info(f'本次重置链接为：{match.group(0)}')
+
+            return match.group(0)
 
         return None
 
@@ -635,10 +726,10 @@ class Netflix(object):
         # 坐等奈飞发送的重置密码链接
         wait_start_time = time.time()
         while True:
-            reset_link = self.__fetch_mail(netflix_account_email, 1)
+            reset_link = self.pwd_reset_request_mail_listener(netflix_account_email)
 
             if reset_link:
-                self.redis.set(f'{netflix_account_email}.need_to_do', 0)  # 忽略下一封密码重置邮件
+                self.set_need_to_do(netflix_account_email, 0)  # 忽略下一封密码重置邮件
 
                 break
 
@@ -815,6 +906,18 @@ class Netflix(object):
             server.login(username, password)
             server.sendmail(from_addr=username, to_addrs=to, msg=msg.as_string())
 
+    @staticmethod
+    def gen_random_pwd(length: int = 13):
+        """
+        生成随机密码
+        :param length:
+        :return:
+        """
+        characters = string.ascii_letters + string.digits + string.punctuation
+        password = ''.join(random.choice(characters) for i in range(length))
+
+        return password
+
     @catch_exception
     def run(self):
         logger.info('开始监听密码被改邮件')
@@ -830,46 +933,74 @@ class Netflix(object):
             self.redis.set_response_callback('GET', int)
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                all_tasks = {executor.submit(self.__fetch_mail, item.get('u'), 0): item.get('p') for item in
-                             self.MULTIPLE_NETFLIX_ACCOUNTS}
+                all_tasks = {
+                    executor.submit(self.pwd_result_mail_listener, item.get('u')): (item.get('u'), item.get('p')) for
+                    item in
+                    self.MULTIPLE_NETFLIX_ACCOUNTS}
 
                 for future in as_completed(all_tasks):
                     try:
-                        p = all_tasks[future]
-                        netflix_account_email = future.result()
+                        u, p = all_tasks[future]
 
-                        if netflix_account_email:
+                        result = future.result()
+                        if not result:
+                            continue
+
+                        data, event_type = result
+
+                        if event_type == 1:  # 用户恶意修改密码
                             for i in range(0, self.max_retry):
                                 try:
                                     if i:
                                         logger.info(f'第 {i} 次重试恢复密码')
 
-                                    spend_time = self.__do_reset(netflix_account_email, p)
+                                    spend_time = self.__do_reset(u, p)
 
-                                    Netflix.send_mail(f'发现有人修改了 Netflix 账户 {netflix_account_email} 的密码，我已自动将密码恢复初始状态',
+                                    Netflix.send_mail(f'发现有人修改了 Netflix 账户 {u} 的密码，我已自动将密码恢复初始状态',
                                                       [f'程式在 {self.now()} 已将密码恢复为初始状态，共耗时{spend_time}，本次自动处理成功。'])
 
                                     break
                                 except Exception as e:
-                                    self.redis.set(f'{netflix_account_email}.need_to_do', 1)  # 恢复检测
+                                    self.set_need_to_do(u, 1)  # 恢复检测
 
-                                    screenshot_file = f'logs/screenshots/{netflix_account_email}/{self.now("%Y-%m-%d_%H_%M_%S_%f")}.png'
+                                    screenshot_file = f'logs/screenshots/{u}/{self.now("%Y-%m-%d_%H_%M_%S_%f")}.png'
                                     self.__screenshot(screenshot_file)
 
                                     logger.info(f'出错画面已被截图，图片文件保存在：{screenshot_file}')
                                     logger.error(f'密码恢复过程出错：{str(e)}，即将重试')
 
-                                    Netflix.send_mail(f'主人，程式尝试自动恢复账户 {netflix_account_email} 的密码失败了，别担心，即将自动重试',
+                                    Netflix.send_mail(f'主人，程式尝试自动恢复账户 {u} 的密码失败了，别担心，即将自动重试',
                                                       [
                                                           f'刚刚尝试自动恢复密码失败了，捕获的异常消息为：{str(e)}。<br>我已将今天的日志以及这次出错画面的截图作为附件发送给您，请查收。<br><br>不过无需担心，程序将自动重试恢复密码。'],
                                                       files=[f'logs/{Netflix.now("%Y-%m-%d")}.log', screenshot_file])
                             else:
                                 logger.info(f'一共尝试 {self.max_retry} 次，均无法自动恢复密码，需要人工介入')
 
-                                Netflix.send_mail(f'主人，多次尝试自动恢复账户 {netflix_account_email} 的密码均以失败告终，请您调查一下',
+                                Netflix.send_mail(f'主人，多次尝试自动恢复账户 {u} 的密码均以失败告终，请您调查一下',
                                                   [
                                                       f'程式一共尝试了 {self.max_retry} 次，均无法自动恢复密码，需要人工介入。<br><br>每一次失败的原因我已写入日志，且已作为附件发送给您。另外，错误画面的截图也已经保存。'],
                                                   files=[f'logs/{Netflix.now("%Y-%m-%d")}.log'])
+                        elif event_type == 2:  # Netflix 强迫用户修改密码
+                            try:
+                                self.set_need_to_do(u, 0)
+
+                                # 重置为随机密码
+                                reset_link = data
+                                random_pwd = Netflix.gen_random_pwd(8)
+                                self.__reset_password_via_mail(reset_link, random_pwd)
+
+                                # 重置为原密码
+                                self.__reset_password(random_pwd, p)
+
+                                logger.info('成功从随机密码改回原密码')
+
+                                Netflix.send_mail(f'发现 Netflix 强迫您修改账户 {u} 的密码，我已自动将密码恢复初始状态',
+                                                  [f'程式在 {self.now()} 已将密码恢复为初始状态，本次自动处理成功。'])
+                            except Exception as e:
+                                self.set_need_to_do(u, 1)
+
+                                Netflix.send_mail(f'处理失败，无法处理 Netflix 强迫您修改账户 {u} 密码的事件',
+                                                  [f'程式在 {self.now()} 处理失败，请人工介人。'])
                     except Exception as e:
                         logger.error('出错：{}', str(e))
 
