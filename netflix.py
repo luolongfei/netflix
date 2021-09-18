@@ -984,15 +984,14 @@ class Netflix(object):
                                                   files=[f'logs/{Netflix.now("%Y-%m-%d")}.log'])
                         elif event_type == 2:  # Netflix 强迫用户修改密码
                             try:
-                                self.set_need_to_do(u, 0)
-
                                 # 重置为随机密码
-                                reset_link = data
                                 random_pwd = Netflix.gen_random_pwd(8)
-                                self.__reset_password_via_mail(reset_link, random_pwd)
+                                self.__do_reset(u, random_pwd)
 
                                 # 重置为原密码
                                 self.__reset_password(random_pwd, p)
+
+                                self.set_need_to_do(u, 0)
 
                                 logger.info('成功从随机密码改回原密码')
 
@@ -1002,7 +1001,7 @@ class Netflix(object):
                                 self.set_need_to_do(u, 1)
 
                                 Netflix.send_mail(f'处理失败，无法处理 Netflix 强迫您修改账户 {u} 密码的事件',
-                                                  [f'程式在 {self.now()} 处理失败，请人工介人。'])
+                                                  [f'程式在 {self.now()} 处理失败，失败的原因是：{str(e)}，请人工介人。'])
                     except Exception as e:
                         logger.error('出错：{}', str(e))
 
