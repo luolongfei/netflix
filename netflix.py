@@ -610,7 +610,7 @@ class Netflix(object):
         # 定义事件类型 0：未知 1：用户恶意修改密码 2：Netflix 强迫用户修改密码
         event_type = 0
 
-        if Netflix.is_password_reset_result(resp):  # 检测到有用户恶意修改密码
+        if Netflix.is_password_reset_result(resp['subject']):  # 检测到有用户恶意修改密码
             logger.info('检测到有人修改了 Netflix 账户 {} 的密码', netflix_account_email)
 
             event_type = 1
@@ -636,7 +636,7 @@ class Netflix(object):
                 return None
 
             return True, event_type
-        elif Netflix.is_force_change_password_request(resp):  # 检测到奈飞强迫用户修改密码
+        elif Netflix.is_force_change_password_request(resp['text']):  # 检测到奈飞强迫用户修改密码
             logger.info('检测到 Netflix 以安全起见，强迫用户修改账户 {} 的密码', netflix_account_email)
             logger.info('开始提取密码重置链接')
 
