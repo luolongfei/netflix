@@ -640,17 +640,10 @@ class Netflix(object):
             return True, event_type
         elif Netflix.is_force_change_password_request(resp['text']):  # 检测到奈飞强迫用户修改密码
             logger.info('检测到 Netflix 以安全起见，强迫用户修改账户 {} 的密码', netflix_account_email)
-            logger.info('开始提取密码重置链接')
 
             event_type = 2
-            match = Netflix.FORCE_CHANGE_PASSWORD_REGEX.search(resp['text'])
-            if not match:
-                raise Exception('未能正确提取重置密码链接，请调查一下')
 
-            logger.info('已成功提取重置密码链接')
-            logger.info(f'本次重置链接为：{match.group(0)}')
-
-            return match.group(0), event_type
+            return True, event_type
 
     def pwd_reset_request_mail_listener(self, netflix_account_email) -> str or None:
         """
@@ -915,7 +908,7 @@ class Netflix(object):
         :param length:
         :return:
         """
-        characters = string.ascii_letters + string.digits + string.punctuation
+        characters = string.ascii_letters + string.digits  # + string.punctuation
         password = ''.join(random.choice(characters) for i in range(length))
 
         return password
