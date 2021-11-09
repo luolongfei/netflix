@@ -49,28 +49,27 @@ from email import encoders
 
 
 def catch_exception(origin_func):
-    def wrapper(self, *args, **kwargs):
-        """
-        用于异常捕获的装饰器
-        :param self:
-        :param args:
-        :param kwargs:
-        :return:
-        """
+    """
+    用于异常捕获的装饰器
+    :param origin_func:
+    :return:
+    """
+
+    def wrapper(*args, **kwargs):
         try:
-            return origin_func(self, *args, **kwargs)
+            return origin_func(*args, **kwargs)
         except AssertionError as e:
             logger.error(f'参数错误：{str(e)}')
         except NoSuchElementException as e:
             logger.error('匹配元素超时，超过 {} 秒依然没有发现元素：{}', Netflix.TIMEOUT, str(e))
         except TimeoutException as e:
-            logger.error(f'请求超时：{self.driver.current_url} 异常：{str(e)}')
+            logger.error(f'请求超时：{Netflix.driver.current_url} 异常：{str(e)}')
         except WebDriverException as e:
             logger.error(f'未知错误：{str(e)}')
         except Exception as e:
             logger.error('出错：{} 位置：{}', str(e), traceback.format_exc())
         finally:
-            self.driver.quit()
+            Netflix.driver.quit()
             logger.info('已关闭浏览器，释放资源占用')
 
     return wrapper
@@ -913,6 +912,20 @@ class Netflix(object):
 
         return password
 
+    @staticmethod
+    def send_keys_delay_random(element, keys, min_delay=0.13, max_delay=0.52):
+        """
+        随机延迟输入
+        :param element:
+        :param keys:
+        :param min_delay:
+        :param max_delay:
+        :return:
+        """
+        for key in keys:
+            element.send_keys(key)
+            time.sleep(random.uniform(min_delay, max_delay))
+
     @catch_exception
     def run(self):
         logger.info('开始监听密码被改邮件')
@@ -1001,20 +1014,6 @@ class Netflix(object):
                 time.sleep(2)
 
                 logger.debug('开始下一轮监听')
-
-    @staticmethod
-    def send_keys_delay_random(element, keys, min_delay=0.13, max_delay=0.52):
-        """
-        随机延迟输入
-        :param element:
-        :param keys:
-        :param min_delay:
-        :param max_delay:
-        :return:
-        """
-        for key in keys:
-            element.send_keys(key)
-            time.sleep(random.uniform(min_delay, max_delay))
 
 
 if __name__ == '__main__':
