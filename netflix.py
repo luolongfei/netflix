@@ -77,7 +77,7 @@ def catch_exception(origin_func):
 
 
 class Netflix(object):
-    VERSION = 'v0.3'
+    VERSION = 'v0.3.1'
 
     # 超时秒数，包括隐式等待和显式等待
     TIMEOUT = 23
@@ -391,7 +391,7 @@ class Netflix(object):
         :return:
         """
         try:
-            self.driver.implicitly_wait(0.5)
+            self.driver.implicitly_wait(2)
 
             el = self.driver.find_element_by_xpath(xpath)
 
