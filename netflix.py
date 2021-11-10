@@ -32,6 +32,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.remote.webelement import WebElement
 from dotenv import load_dotenv
 from loguru import logger
 import imaplib
@@ -76,6 +77,8 @@ def catch_exception(origin_func):
 
 
 class Netflix(object):
+    VERSION = 'v0.3'
+
     # 超时秒数，包括隐式等待和显式等待
     TIMEOUT = 23
 
@@ -183,7 +186,7 @@ class Netflix(object):
         self.max_wait_reset_mail_time = 10
 
         # 恢复密码失败后最多重试几次
-        self.max_retry = 5
+        self.max_retry = 12
 
         self.first_time = []
         self.today = Netflix.today_()
@@ -202,6 +205,10 @@ class Netflix(object):
             return [{'u': item[0], 'p': item[1]} for item in match]
 
         raise Exception('未配置 Netflix 账户')
+
+    @staticmethod
+    def format_time(time: str or int, format: str = '%m/%d %H:%M:%S') -> str:
+        return datetime.datetime.fromtimestamp(time).strftime(format)
 
     @staticmethod
     def today_():
@@ -288,9 +295,12 @@ class Netflix(object):
 
         time.sleep(2)
 
-        self.driver.find_element_by_class_name('forgot-password-action-button').click()
+        self.click_forgot_pwd_btn()
+
+        self.handle_unknown_error_alert(self.click_forgot_pwd_btn, 12)
 
         # 直到页面显示已发送邮件
+        logger.debug('检测是否已到送信完成画面')
         self.wait.until(EC.visibility_of(
             self.driver.find_element_by_xpath('//*[@class="login-content"]//h2[@data-uia="email_sent_label"]')))
 
@@ -298,23 +308,62 @@ class Netflix(object):
 
         return True
 
+    def click_forgot_pwd_btn(self):
+        """
+        点击忘记密码按钮
+        :return:
+        """
+        self.driver.find_element_by_class_name('forgot-password-action-button').click()
+
     def __reset_password(self, curr_netflix_password: str, new_netflix_password: str):
         """
-        重置密码
+        账户内修改密码
         :param curr_netflix_password:
         :param new_netflix_password:
         :return:
         """
-        logger.info('尝试重置密码')
+        try:
+            self.driver.get(Netflix.RESET_PASSWORD_URL)
 
-        self.driver.get(Netflix.RESET_PASSWORD_URL)
+            curr_pwd = self.driver.find_element_by_id('id_currentPassword')
+            curr_pwd.clear()
+            Netflix.send_keys_delay_random(curr_pwd, curr_netflix_password)
 
-        curr_pwd = self.driver.find_element_by_id('id_currentPassword')
-        curr_pwd.clear()
-        Netflix.send_keys_delay_random(curr_pwd, curr_netflix_password)
+            time.sleep(2)
 
-        time.sleep(2)
+            new_pwd = self.driver.find_element_by_id('id_newPassword')
+            new_pwd.clear()
+            Netflix.send_keys_delay_random(new_pwd, new_netflix_password)
 
+            time.sleep(2)
+
+            confirm_new_pwd = self.driver.find_element_by_id('id_confirmNewPassword')
+            confirm_new_pwd.clear()
+            Netflix.send_keys_delay_random(confirm_new_pwd, new_netflix_password)
+
+            time.sleep(1.5)
+
+            # 其它设备无需重新登录
+            self.driver.find_element_by_xpath('//li[@data-uia="field-requireAllDevicesSignIn+wrapper"]').click()
+
+            time.sleep(1)
+
+            self.click_submit_btn()
+
+            self.handle_unknown_error_alert(self.click_submit_btn)
+
+            return self.__pwd_change_result()
+        except Exception as e:
+            logger.error('直接在账户内修改密码出错：' + str(e))
+
+            return False
+
+    def input_pwd(self, new_netflix_password: str) -> None:
+        """
+        输入密码
+        :param new_netflix_password:
+        :return:
+        """
         new_pwd = self.driver.find_element_by_id('id_newPassword')
         new_pwd.clear()
         Netflix.send_keys_delay_random(new_pwd, new_netflix_password)
@@ -325,22 +374,79 @@ class Netflix(object):
         confirm_new_pwd.clear()
         Netflix.send_keys_delay_random(confirm_new_pwd, new_netflix_password)
 
-        time.sleep(1.5)
-
-        # 其它设备无需重新登录
-        self.driver.find_element_by_xpath('//li[@data-uia="field-requireAllDevicesSignIn+wrapper"]').click()
-
         time.sleep(1)
 
+    def click_submit_btn(self):
+        """
+        点击提交输入的密码
+        :return:
+        """
         self.driver.find_element_by_id('btn-save').click()
 
-        self.wait.until(lambda d: d.current_url == 'https://www.netflix.com/YourAccount?confirm=password')
+    def element_visibility_of(self, xpath: str) -> WebElement or None:
+        """
+        元素是否存在且可见
+        适用于在已经加载完的网页做检测，可见且存在则返回元素，否则返回 None
+        :param xpath:
+        :return:
+        """
+        try:
+            self.driver.implicitly_wait(0.5)
 
-        logger.info('密码已修改成功')
+            el = self.driver.find_element_by_xpath(xpath)
 
-        return True
+            return el if EC.visibility_of(el) else None
+        except Exception:
+            return None
+        finally:
+            self.driver.implicitly_wait(Netflix.TIMEOUT)
 
-    def __reset_password_via_mail(self, reset_url: str, new_netflix_password: str):
+    def has_unknown_error_alert(self) -> bool:
+        """
+        Netflix 提醒页面出现未知错误
+        :return:
+        """
+        error_tips_el = self.element_visibility_of('//div[@class="ui-message-contents"]')
+
+        if error_tips_el:
+            # 密码修改成功画面的提示语与错误提示语共用的同一个元素，防止误报
+            if 'YourAccount?confirm=password' in self.driver.current_url or 'Your password has been changed' in error_tips_el.text:
+                return False
+
+            logger.warning('页面出现未知错误提醒，提醒内容为 ' + error_tips_el.text)
+
+            return True
+
+        return False
+
+    def handle_unknown_error_alert(self, func, max_try: int = 10):
+        """
+        处理 Netflix 未知异常
+
+        Netflix 会随机出现提醒页面出现未知错误，请稍后重试的情况，需要稍等片刻再点击才正常
+        :param func:
+        :param max_try:
+        :return:
+        """
+        num_of_tries = 0
+
+        while True:
+            if self.has_unknown_error_alert():
+                num_of_tries += 1
+
+                sleep_time = num_of_tries * 2
+                time.sleep(sleep_time)
+
+                logger.info(f'程式将休眠 {sleep_time} 秒后重试点击')
+
+                func()
+
+                if num_of_tries >= max_try:
+                    raise Exception('处理 Netflix 未知异常失败')
+            else:
+                break
+
+    def __reset_password_via_mail(self, reset_url: str, new_netflix_password: str) -> bool:
         """
         通过邮件重置密码
         :param reset_url:
@@ -353,25 +459,49 @@ class Netflix(object):
 
         self.driver.get(reset_url)
 
-        new_pwd = self.driver.find_element_by_id('id_newPassword')
-        new_pwd.clear()
-        Netflix.send_keys_delay_random(new_pwd, new_netflix_password)
+        self.input_pwd(new_netflix_password)
+        self.click_submit_btn()
 
-        time.sleep(2)
+        self.handle_unknown_error_alert(self.click_submit_btn)
 
-        confirm_new_pwd = self.driver.find_element_by_id('id_confirmNewPassword')
-        confirm_new_pwd.clear()
-        Netflix.send_keys_delay_random(confirm_new_pwd, new_netflix_password)
+        # 如果奈飞提示密码曾经用过，则应该先改为随机密码，然后再改回来
+        pwd_error_tips = self.element_visibility_of('//div[@data-uia="field-newPassword+error"]')
+        if pwd_error_tips:
+            logger.warning('疑似 Netflix 提示你不能使用以前的密码（由于各种错误提示所在的 页面元素 相同，故无法准确判断，但是程式会妥善处理，不用担心）')
+            logger.warning(f'原始的提示语为 {pwd_error_tips.text}，故程式将尝试先改为随机密码，然后再改回正常密码。')
 
-        time.sleep(1)
+            random_pwd = self.gen_random_pwd()
+            self.input_pwd(random_pwd)
+            self.click_submit_btn()
 
-        self.driver.find_element_by_id('btn-save').click()
+            self.handle_unknown_error_alert(self.click_submit_btn)
 
-        self.wait.until(lambda d: d.current_url == 'https://www.netflix.com/YourAccount?confirm=password')
+            if not self.__pwd_change_result():
+                return False
 
-        logger.info('通过邮件内链接修改密码成功')
+            # 账户内直接将密码改回原始值
+            logger.info('尝试在账户内直接将密码改回原始密码')
 
-        return True
+            return self.__reset_password(random_pwd, new_netflix_password)
+
+        return self.__pwd_change_result()
+
+    def __pwd_change_result(self):
+        """
+        密码修改结果
+        :return: 
+        """
+        try:
+            self.wait.until(lambda d: d.current_url == 'https://www.netflix.com/YourAccount?confirm=password')
+
+            logger.info('已成功修改密码')
+
+            return True
+        except Exception as e:
+            logger.error('未能正确跳到密码修改成功画面，疑似未成功，抛出异常：' + str(e))
+            self.error_page_screenshot()
+
+            return False
 
     @staticmethod
     def parse_mail(data: bytes, onlySubject: bool = False) -> dict or str:
@@ -704,21 +834,20 @@ class Netflix(object):
 
             return '{:02d}天{:02d}小时{:02d}分钟{:02d}秒'.format(d, h, m, s)
 
-    def __do_reset(self, netflix_account_email: str, p: str):
+    def __do_reset(self, netflix_account_email: str, p: str) -> bool:
         """
         执行重置密码流程
         :param netflix_account_email:
         :param p:
         :return:
         """
-        start_time = time.time()
-
         self.__forgot_password(netflix_account_email)
 
         logger.info('等待接收重置密码链接')
 
         # 坐等奈飞发送的重置密码链接
         wait_start_time = time.time()
+
         while True:
             reset_link = self.pwd_reset_request_mail_listener(netflix_account_email)
 
@@ -732,13 +861,7 @@ class Netflix(object):
 
             time.sleep(2)
 
-        # 重置密码
-        self.__reset_password_via_mail(reset_link, p)
-
-        spend_time = Netflix.time_diff(start_time, time.time())
-        logger.info(f'今次自动重置密码耗时{spend_time}')
-
-        return spend_time
+        return self.__reset_password_via_mail(reset_link, p)
 
     @staticmethod
     def now(format='%Y-%m-%d %H:%M:%S.%f'):
@@ -799,7 +922,7 @@ class Netflix(object):
 
     @staticmethod
     def send_mail(subject: str, content: str or list, to: str = None, files: list = [], text_plain: str = '',
-                  template='default') -> None:
+                  template='default') -> bool:
         """
         发送邮件
         :param subject:
@@ -810,95 +933,102 @@ class Netflix(object):
         :param template:
         :return:
         """
-        if not to:
-            to = os.getenv('INBOX')
-            assert to, '尚未在 .env 文件中检测到 INBOX 的值，请配置之'
+        try:
+            if not to:
+                to = os.getenv('INBOX')
+                assert to, '尚未在 .env 文件中检测到 INBOX 的值，请配置之'
 
-        # 发信邮箱账户
-        username = os.getenv('BOT_MAIL_USERNAME')
-        password = os.getenv('BOT_MAIL_PASSWORD')
+            # 发信邮箱账户
+            username = os.getenv('BOT_MAIL_USERNAME')
+            password = os.getenv('BOT_MAIL_PASSWORD')
 
-        # 根据发信邮箱类型自动使用合适的配置
-        if '@gmail.com' in username:
-            host = 'smtp.gmail.com'
-            secure = 'tls'
-            port = 587
-        elif '@qq.com' in username:
-            host = 'smtp.qq.com'
-            secure = 'tls'
-            port = 587
-        elif '@163.com' in username:
-            host = 'smtp.163.com'
-            secure = 'ssl'
-            port = 465
-        else:
-            raise ValueError(f'「{username}」 是不受支持的邮箱。目前仅支持谷歌邮箱、QQ邮箱以及163邮箱，推荐使用谷歌邮箱。')
+            # 根据发信邮箱类型自动使用合适的配置
+            if '@gmail.com' in username:
+                host = 'smtp.gmail.com'
+                secure = 'tls'
+                port = 587
+            elif '@qq.com' in username:
+                host = 'smtp.qq.com'
+                secure = 'tls'
+                port = 587
+            elif '@163.com' in username:
+                host = 'smtp.163.com'
+                secure = 'ssl'
+                port = 465
+            else:
+                raise ValueError(f'「{username}」 是不受支持的邮箱。目前仅支持谷歌邮箱、QQ邮箱以及163邮箱，推荐使用谷歌邮箱。')
 
-        # 格式化邮件内容
-        if isinstance(content, list):
-            with open('./mail/{}.html'.format(template), 'r', encoding='utf-8') as f:
-                template_content = f.read()
-                text = Netflix.MAIL_SYMBOL_REGEX.sub(Netflix.symbol_replace, template_content).format(*content)
-                real_content = text.replace('{{', '{').replace('}}', '}')
-        elif isinstance(content, str):
-            real_content = content
-        else:
-            raise TypeError(f'邮件内容类型仅支持 list 或 str，当前传入的类型为 {type(content)}')
+            # 格式化邮件内容
+            if isinstance(content, list):
+                with open('./mail/{}.html'.format(template), 'r', encoding='utf-8') as f:
+                    template_content = f.read()
+                    text = Netflix.MAIL_SYMBOL_REGEX.sub(Netflix.symbol_replace, template_content).format(*content)
+                    real_content = text.replace('{{', '{').replace('}}', '}')
+            elif isinstance(content, str):
+                real_content = content
+            else:
+                raise TypeError(f'邮件内容类型仅支持 list 或 str，当前传入的类型为 {type(content)}')
 
-        # 邮件内容设置多个部分
-        msg = MIMEMultipart('alternative')
+            # 邮件内容设置多个部分
+            msg = MIMEMultipart('alternative')
 
-        msg['From'] = formataddr(('Im Robot', username))
-        msg['To'] = formataddr(('', to))
-        msg['Subject'] = subject
+            msg['From'] = formataddr(('Im Robot', username))
+            msg['To'] = formataddr(('', to))
+            msg['Subject'] = subject
 
-        # 添加纯文本内容（针对不支持 html 的邮件客户端）
-        # 注意：当同时包含纯文本和 html 时，一定要先添加纯文本再添加 html，因为一般邮件客户端默认优先展示最后添加的部分
-        # https://realpython.com/python-send-email/
-        # https://docs.python.org/3/library/email.mime.html
-        # As not all email clients display HTML content by default, and some people choose only to receive plain-text emails for security reasons,
-        # it is important to include a plain-text alternative for HTML messages. As the email client will render the last multipart attachment first,
-        # make sure to add the HTML message after the plain-text version.
-        if text_plain:
-            msg.attach(MIMEText(text_plain, 'plain', 'utf-8'))
-        elif isinstance(content, str):  # 仅当传入内容是纯文本才添加纯文本内容，因为一般传入 list 的情况下，我只想发送 html 内容
-            text_plain = MIMEText(content, 'plain', 'utf-8')
-            msg.attach(text_plain)
+            # 添加纯文本内容（针对不支持 html 的邮件客户端）
+            # 注意：当同时包含纯文本和 html 时，一定要先添加纯文本再添加 html，因为一般邮件客户端默认优先展示最后添加的部分
+            # https://realpython.com/python-send-email/
+            # https://docs.python.org/3/library/email.mime.html
+            # As not all email clients display HTML content by default, and some people choose only to receive plain-text emails for security reasons,
+            # it is important to include a plain-text alternative for HTML messages. As the email client will render the last multipart attachment first,
+            # make sure to add the HTML message after the plain-text version.
+            if text_plain:
+                msg.attach(MIMEText(text_plain, 'plain', 'utf-8'))
+            elif isinstance(content, str):  # 仅当传入内容是纯文本才添加纯文本内容，因为一般传入 list 的情况下，我只想发送 html 内容
+                text_plain = MIMEText(content, 'plain', 'utf-8')
+                msg.attach(text_plain)
 
-        # 添加网页
-        page = MIMEText(real_content, 'html', 'utf-8')
-        msg.attach(page)
+            # 添加网页
+            page = MIMEText(real_content, 'html', 'utf-8')
+            msg.attach(page)
 
-        # 添加 html 内联图片，仅适配模板中头像
-        if isinstance(content, list):
-            with open('mail/images/ting.jpg', 'rb') as img:
-                avatar = MIMEImage(img.read())
-                avatar.add_header('Content-ID', '<avatar>')
-                msg.attach(avatar)
+            # 添加 html 内联图片，仅适配模板中头像
+            if isinstance(content, list):
+                with open('mail/images/ting.jpg', 'rb') as img:
+                    avatar = MIMEImage(img.read())
+                    avatar.add_header('Content-ID', '<avatar>')
+                    msg.attach(avatar)
 
-        # 添加附件
-        for path in files:  # 注意，如果文件尺寸为 0 会被忽略
-            if not os.path.exists(path):
-                logger.error(f'发送邮件时，发现要添加的附件（{path}）不存在，本次已忽略此附件')
+            # 添加附件
+            for path in files:  # 注意，如果文件尺寸为 0 会被忽略
+                if not os.path.exists(path):
+                    logger.error(f'发送邮件时，发现要添加的附件（{path}）不存在，本次已忽略此附件')
 
-                continue
+                    continue
 
-            part = MIMEBase('application', 'octet-stream')
-            with open(path, 'rb') as file:
-                part.set_payload(file.read())
+                part = MIMEBase('application', 'octet-stream')
+                with open(path, 'rb') as file:
+                    part.set_payload(file.read())
 
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', 'attachment; filename="{}"'.format(Path(path).name))
-            msg.attach(part)
+                encoders.encode_base64(part)
+                part.add_header('Content-Disposition', 'attachment; filename="{}"'.format(Path(path).name))
+                msg.attach(part)
 
-        with smtplib.SMTP_SSL(host=host, port=port) if secure == 'ssl' else smtplib.SMTP(host=host,
-                                                                                         port=port) as server:
-            # 启用 tls 加密，优于 ssl
-            if secure == 'tls':
-                server.starttls(context=ssl.create_default_context())
+            with smtplib.SMTP_SSL(host=host, port=port) if secure == 'ssl' else smtplib.SMTP(host=host,
+                                                                                             port=port) as server:
+                # 启用 tls 加密，优于 ssl
+                if secure == 'tls':
+                    server.starttls(context=ssl.create_default_context())
 
-            server.login(username, password)
-            server.sendmail(from_addr=username, to_addrs=to, msg=msg.as_string())
+                server.login(username, password)
+                server.sendmail(from_addr=username, to_addrs=to, msg=msg.as_string())
+
+                return True
+        except Exception as e:
+            logger.error('邮件送信失败：' + str(e))
+
+            return False
 
     @staticmethod
     def gen_random_pwd(length: int = 13):
@@ -926,8 +1056,31 @@ class Netflix(object):
             element.send_keys(key)
             time.sleep(random.uniform(min_delay, max_delay))
 
+    def error_page_screenshot(self) -> str:
+        """
+        错误画面实时截图
+        :return:
+        """
+        screenshot_file = f'logs/screenshots/error_page/{self.now("%Y-%m-%d_%H_%M_%S_%f")}.png'
+
+        self.__screenshot(screenshot_file)
+
+        logger.info(f'出错画面已被截图，图片文件保存在：{screenshot_file}')
+
+        return screenshot_file
+
+    @staticmethod
+    def get_event_reason(event_type: int) -> str:
+        if event_type == 1:
+            return '用户恶意修改密码'
+        elif event_type == 2:
+            return 'Netflix 强迫用户修改密码'
+
+        return '未知原因'
+
     @catch_exception
     def run(self):
+        logger.info('当前程序版本为 ' + Netflix.VERSION)
         logger.info('开始监听密码被改邮件')
 
         # 监听密码被改邮件
@@ -955,65 +1108,68 @@ class Netflix(object):
                             continue
 
                         data, event_type = result
+                        event_reason = Netflix.get_event_reason(event_type)
+                        start_time = time.time()
+                        num_of_tries = 0
 
-                        if event_type == 1:  # 用户恶意修改密码
-                            for i in range(0, self.max_retry):
-                                try:
-                                    if i:
-                                        logger.info(f'第 {i} 次重试恢复密码')
+                        while True:
+                            try:
+                                if event_type == 1:  # 用户恶意修改密码
+                                    self.__do_reset(u, p)  # 要么返回 True，要么抛异常
 
-                                    spend_time = self.__do_reset(u, p)
+                                    logger.info('成功恢复原始密码')
+                                    Netflix.send_mail(
+                                        f'在 {Netflix.format_time(start_time)} 发现有人修改了 Netflix 账户 {u} 的密码，我已自动将密码恢复为初始状态',
+                                        [
+                                            f'程式在 {self.now()} 已将密码恢复为初始状态，共耗时{Netflix.time_diff(start_time, time.time())}，本次自动处理成功。'])
 
-                                    Netflix.send_mail(f'发现有人修改了 Netflix 账户 {u} 的密码，我已自动将密码恢复初始状态',
-                                                      [f'程式在 {self.now()} 已将密码恢复为初始状态，共耗时{spend_time}，本次自动处理成功。'])
+                                    self.set_need_to_do(u, 0)
 
                                     break
-                                except Exception as e:
+                                elif event_type == 2:  # Netflix 强迫用户修改密码
+                                    # 重置为随机密码
+                                    logger.info('尝试先修改为随机密码')
+                                    random_pwd = Netflix.gen_random_pwd(8)
+                                    self.__do_reset(u, random_pwd)
+
+                                    # 账户内自动修改为原始密码
+                                    self.__reset_password(random_pwd, p)
+
+                                    self.set_need_to_do(u, 0)
+
+                                    logger.info('成功从随机密码改回原始密码')
+                                    Netflix.send_mail(
+                                        f'在 {Netflix.format_time(start_time)} 发现 Netflix 强迫您修改账户 {u} 的密码，我已自动将密码恢复为初始状态',
+                                        [
+                                            f'程式在 {self.now()} 已将密码恢复为初始状态，共耗时{Netflix.time_diff(start_time, time.time())}，本次自动处理成功。'])
+
+                                    break
+
+                                # 超过最大尝试次数
+                                if num_of_tries >= self.max_retry:
+                                    error_msg = f'程式一共尝试了 {num_of_tries} 次恢复密码，均以失败告终'
+                                    logger.error(error_msg)
+
                                     self.set_need_to_do(u, 1)  # 恢复检测
 
-                                    screenshot_file = f'logs/screenshots/{u}/{self.now("%Y-%m-%d_%H_%M_%S_%f")}.png'
-                                    self.__screenshot(screenshot_file)
+                                    screenshot_file = self.error_page_screenshot()
 
-                                    logger.info(f'出错画面已被截图，图片文件保存在：{screenshot_file}')
-                                    logger.error(f'密码恢复过程出错：{str(e)}，即将重试')
-
-                                    Netflix.send_mail(f'主人，程式尝试自动恢复账户 {u} 的密码失败了，别担心，即将自动重试',
-                                                      [
-                                                          f'刚刚尝试自动恢复密码失败了，捕获的异常消息为：{str(e)}。<br>我已将今天的日志以及这次出错画面的截图作为附件发送给您，请查收。<br><br>不过无需担心，程序将自动重试恢复密码。'],
+                                    Netflix.send_mail(f'主人，抱歉没能恢复 {u} 的密码，请尝试手动恢复', [
+                                        f'今次触发恢复密码的动作的原因为：{event_reason}。<br>发现时间：{Netflix.format_time(start_time)}<br><br>{error_msg}。我已将今天的日志以及这次出错画面的截图作为附件发送给您，请查收。'],
                                                       files=[f'logs/{Netflix.now("%Y-%m-%d")}.log', screenshot_file])
-                            else:
-                                logger.info(f'一共尝试 {self.max_retry} 次，均无法自动恢复密码，需要人工介入')
 
-                                Netflix.send_mail(f'主人，多次尝试自动恢复账户 {u} 的密码均以失败告终，请您调查一下',
-                                                  [
-                                                      f'程式一共尝试了 {self.max_retry} 次，均无法自动恢复密码，需要人工介入。<br><br>每一次失败的原因我已写入日志，且已作为附件发送给您。另外，错误画面的截图也已经保存。'],
-                                                  files=[f'logs/{Netflix.now("%Y-%m-%d")}.log'])
-                        elif event_type == 2:  # Netflix 强迫用户修改密码
-                            try:
-                                # 重置为随机密码
-                                random_pwd = Netflix.gen_random_pwd(8)
-                                self.__do_reset(u, random_pwd)
-
-                                # 重置为原密码
-                                self.__reset_password(random_pwd, p)
-
-                                self.set_need_to_do(u, 0)
-
-                                logger.info('成功从随机密码改回原密码')
-
-                                Netflix.send_mail(f'发现 Netflix 强迫您修改账户 {u} 的密码，我已自动将密码恢复初始状态',
-                                                  [f'程式在 {self.now()} 已将密码恢复为初始状态，本次自动处理成功。'])
+                                    break
                             except Exception as e:
-                                self.set_need_to_do(u, 1)
-
-                                Netflix.send_mail(f'处理失败，无法处理 Netflix 强迫您修改账户 {u} 密码的事件',
-                                                  [f'程式在 {self.now()} 处理失败，失败的原因是：{str(e)}，请人工介人。'])
+                                logger.error(
+                                    f'在执行密码恢复操作过程中出错：{str(e)}，程式将最多重试 {self.max_retry} 次，已尝试 {num_of_tries} 次。')
+                            finally:
+                                num_of_tries += 1
                     except Exception as e:
                         logger.error('出错：{}', str(e))
 
-                time.sleep(2)
+            time.sleep(2)
 
-                logger.debug('开始下一轮监听')
+            logger.debug('开始下一轮监听')
 
 
 if __name__ == '__main__':
