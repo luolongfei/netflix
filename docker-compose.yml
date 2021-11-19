@@ -1,0 +1,29 @@
+version: "3"
+
+services:
+  netflix:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: netflix
+    volumes:
+      - .:/conf
+      - ./logs:/app/logs
+    networks:
+      - netflix-network
+    restart: always
+  redis:
+    image: redis:6.2.6-bullseye
+    container_name: redis_for_netflix
+    volumes:
+      - redis-for-netflix-data:/data
+    networks:
+      - netflix-network
+    restart: always
+
+volumes:
+  redis-for-netflix-data:
+
+networks:
+  netflix-network:
+    driver: bridge

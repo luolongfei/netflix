@@ -1,0 +1,9 @@
+.git
+.github
+.idea
+logs
+venv
+README.md
+LICENSE
+chromedriver.exe
+.env

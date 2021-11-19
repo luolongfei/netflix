@@ -103,6 +103,8 @@ class Netflix(object):
         self.args = self.get_all_args()
 
         # 加载环境变量
+        if not os.path.exists('.env'):
+            raise Exception('.env 文件不存在，请复制 .env.example 为 .env 文件')
         load_dotenv(verbose=True, override=True, encoding='utf-8')
 
         # 日志
@@ -175,7 +177,9 @@ class Netflix(object):
             exit(0)
 
         self.BOT_MAIL_USERNAME = os.getenv('BOT_MAIL_USERNAME')
+        assert self.BOT_MAIL_USERNAME, '请在 .env 文件配置 BOT_MAIL_USERNAME 的值，程式将监听此邮箱中的邮件内容'
         self.BOT_MAIL_PASSWORD = os.getenv('BOT_MAIL_PASSWORD')
+        assert self.BOT_MAIL_PASSWORD, '请在 .env 文件配置 BOT_MAIL_PASSWORD 的值，程式用于登录被监听的邮箱'
 
         self.MULTIPLE_NETFLIX_ACCOUNTS = Netflix._parse_multiple_accounts()
 
@@ -224,9 +228,9 @@ class Netflix(object):
         logger.add(sys.stderr, colorize=True, level=level, format=format)
 
     @staticmethod
-    def check_py_version(major=3, minor=6):
+    def check_py_version(major=3, minor=7):
         if sys.version_info < (major, minor):
-            raise UserWarning(f'请使用 python {major}.{minor} 及以上版本，推荐使用 python 3.8.2')
+            raise UserWarning(f'请使用 python {major}.{minor} 及以上版本，推荐使用 python 3.9.8')
 
     @staticmethod
     def get_all_args():
