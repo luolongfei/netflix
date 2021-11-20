@@ -19,8 +19,8 @@ RUN sed -i 's/deb.debian.org/ftp.cn.debian.org/g' /etc/apt/sources.list
 RUN set -eux; \
 
     # 安装基础依赖工具
-    apt update; \
-    apt install -y --no-install-recommends \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -49,11 +49,11 @@ RUN set -eux; \
     xdg-utils \
     xvfb; \
 
-    # 清除非明确安装的推荐的或额外的扩展 configure APT to automatically consider those non-explicitly installed suggestions/recommendations as orphans
-    apt purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
+    # 清除非明确安装的推荐的或额外的扩展 configure apt-get to automatically consider those non-explicitly installed suggestions/recommendations as orphans
+    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
 
     # It removes everything but the lock file from /var/cache/apt/archives/ and /var/cache/apt/archives/partial/
-    apt clean; \
+    apt-get clean; \
 
     # 删除包信息缓存
     rm -rf /var/lib/apt/lists/* \
@@ -74,7 +74,7 @@ WORKDIR /tmp
 
 # 下载并安装 Chrome
 RUN wget --no-verbose -O /tmp/chrome.deb "${CHROME_DOWNLOAD_URL}"; \
-    apt install -yf /tmp/chrome.deb; \
+    apt-get install -yf /tmp/chrome.deb; \
     /usr/bin/google-chrome --version; \
     rm -f /tmp/chrome.deb
 
