@@ -198,6 +198,9 @@ class Netflix(object):
         # 线程池
         self.max_workers = self.args.max_workers
 
+        # Redis 配置
+        self.REDIS_HOST = os.getenv('REDIS_HOST', '127.0.0.1')
+        self.REDIS_PORT = os.getenv('REDIS_PORT', 6379)
         self.redis = None
 
     @staticmethod
@@ -1094,7 +1097,7 @@ class Netflix(object):
                 self.today = real_today
                 self.__logger_setting()
 
-            self.redis = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+            self.redis = redis.Redis(host=self.REDIS_HOST, port=self.REDIS_PORT, db=0, decode_responses=True)
             self.redis.set_response_callback('GET', int)
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:

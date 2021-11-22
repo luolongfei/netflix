@@ -18,6 +18,6 @@ if [ ! -f /app/.env ]; then
     ln -s /conf/.env /app/.env
 fi
 
-python netflix.py -hl
+python netflix.py -hl -f
 
 exec "$@"
