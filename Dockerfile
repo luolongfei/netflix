@@ -20,10 +20,9 @@ RUN sed -i 's/deb.debian.org/ftp.cn.debian.org/g' /etc/apt/sources.list
 
 # set -eux e: 脚本只要发生错误，就终止执行 u: 遇到不存在的变量就会报错，并停止执行 x: 在运行结果之前，先输出执行的那一行命令
 RUN set -eux; \
-
     # 安装基础依赖工具
-    apt update; \
-    apt install -y --no-install-recommends \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -51,33 +50,30 @@ RUN set -eux; \
     wget \
     xdg-utils \
     xvfb; \
-
-    # 清除非明确安装的推荐的或额外的扩展 configure APT to automatically consider those non-explicitly installed suggestions/recommendations as orphans
-    apt purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
-
+    # 清除非明确安装的推荐的或额外的扩展 configure apt-get to automatically consider those non-explicitly installed suggestions/recommendations as orphans
+    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
     # It removes everything but the lock file from /var/cache/apt/archives/ and /var/cache/apt/archives/partial/
-    apt clean; \
-
+    apt-get clean; \
     # 删除包信息缓存
-    rm -rf /var/lib/apt/lists/* \
-
+    rm -rf /var/lib/apt/lists/*
+    
 # 确定 Chrome 以及 ChromeDriver 的下载地址
-#RUN if [ $(curl -ks cip.cc | awk -F ':' '/地址/ {print $2}' | awk -F ' ' '{if ($1 == "中国") print 1; else print 0}') -eq 1 ]; \
-#      then \
-#        echo '检测到当前系统在中国境内，将从淘宝镜像下载 chromedriver，并从 github.feifei.cf 下载 chrome'; \
-#        CHROME_DOWNLOAD_URL=https://github.feifei.cf/https://github.com/feilongluo/data/releases/download/v0.1/google-chrome-stable_${CHROME_VERSION}_amd64.deb; \
-#        CHROME_DRIVER_DOWNLOAD_URL=https://npm.taobao.org/mirrors/chromedriver/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip; \
-#      else \
-#        echo '检测到当前系统在国外，将直接从谷歌官网下载 chrome 以及 chromedriver'; \
-#        CHROME_DOWNLOAD_URL=http://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb; \
-#        CHROME_DRIVER_DOWNLOAD_URL=https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip; \
-#    fi
+RUN if [ $(curl -ks cip.cc | awk -F ':' '/地址/ {print $2}' | awk -F ' ' '{if ($1 == "中国") print 1; else print 0}') -eq 1 ]; \
+     then \
+       echo '检测到当前系统在中国境内，将从淘宝镜像下载 chromedriver，并从 github.feifei.cf 下载 chrome'; \
+       CHROME_DOWNLOAD_URL=https://github.feifei.cf/https://github.com/feilongluo/data/releases/download/v0.1/google-chrome-stable_${CHROME_VERSION}_amd64.deb; \
+       CHROME_DRIVER_DOWNLOAD_URL=https://npm.taobao.org/mirrors/chromedriver/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip; \
+     else \
+       echo '检测到当前系统在国外，将直接从谷歌官网下载 chrome 以及 chromedriver'; \
+       CHROME_DOWNLOAD_URL=http://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb; \
+       CHROME_DRIVER_DOWNLOAD_URL=https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip; \
+   fi
 
 WORKDIR /tmp
 
 # 下载并安装 Chrome
 RUN wget --no-verbose -O /tmp/chrome.deb "${CHROME_DOWNLOAD_URL}"; \
-    apt install -yf /tmp/chrome.deb; \
+    apt-get install -yf /tmp/chrome.deb; \
     /usr/bin/google-chrome --version; \
     rm -f /tmp/chrome.deb
 
@@ -96,6 +92,7 @@ COPY . ./
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir -r requirements.txt
 
 VOLUME ["/conf", "/app/logs"]
+
 
 COPY docker-entrypoint.sh /usr/local/bin/
 ENTRYPOINT ["docker-entrypoint.sh"]
