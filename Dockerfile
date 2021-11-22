@@ -87,12 +87,14 @@ RUN wget --no-verbose -O chromedriver.zip "${CHROME_DRIVER_DOWNLOAD_URL}"; \
 
 WORKDIR /app
 
-COPY . ./
-
+COPY requirements.txt ./
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir -r requirements.txt
 
 VOLUME ["/conf", "/app/logs"]
 
+COPY . ./
 
 COPY docker-entrypoint.sh /usr/local/bin/
 ENTRYPOINT ["docker-entrypoint.sh"]
+
+CMD ["crond", "-f"]
