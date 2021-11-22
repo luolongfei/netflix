@@ -5,18 +5,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: netflix
     volumes:
       - .:/conf
       - ./logs:/app/logs
+    container_name: netflix
     networks:
       - netflix-network
     restart: always
   redis:
     image: redis:6.2.6-bullseye
-    container_name: redis_for_netflix
     volumes:
       - redis-for-netflix-data:/data
+    container_name: redis_for_netflix
     networks:
       - netflix-network
     restart: always
