@@ -6,6 +6,9 @@ LABEL author="mybsdc <mybsdc@gmail.com>" \
 ENV TZ Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
+# 非交互式安装，避免告警
+ARG DEBIAN_FRONTEND=noninteractive
+
 ARG CHROME_VERSION=96.0.4664.45-1
 ARG CHROME_DRIVER_VERSION=96.0.4664.45
 
