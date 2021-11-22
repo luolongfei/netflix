@@ -15,9 +15,6 @@ ARG CHROME_DRIVER_VERSION=96.0.4664.45
 ARG CHROME_DOWNLOAD_URL=http://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb
 ARG CHROME_DRIVER_DOWNLOAD_URL=https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip
 
-# Debian 设置国内源（暂时不必）
-# RUN sed -i 's/deb.debian.org/ftp.cn.debian.org/g' /etc/apt/sources.list
-
 # set -eux e: 脚本只要发生错误，就终止执行 u: 遇到不存在的变量就会报错，并停止执行 x: 在运行结果之前，先输出执行的那一行命令
 RUN set -eux; \
     # 安装基础依赖工具
