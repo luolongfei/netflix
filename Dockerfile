@@ -76,7 +76,9 @@ RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir -r re
 
 VOLUME ["/conf", "/app/logs"]
 
-COPY docker-entrypoint.sh /usr/local/bin/
-ENTRYPOINT ["docker-entrypoint.sh"]
+RUN cp docker-entrypoint.sh /usr/local/bin/; \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["sh", "-c", "docker-entrypoint.sh"]
 
 CMD ["crond", "-f"]
