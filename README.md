@@ -37,6 +37,19 @@ wget -qO- get.docker.com | bash
 说明：请使用 KVM 架构的 VPS，OpenVZ 架构的 VPS 不支持安装 Docker，另外 CentOS 8 不支持用此脚本来安装 Docker。 更多关于 Docker
 安装的内容参考 [Docker 官方安装指南](https://docs.docker.com/engine/install/) 。
 
+启动 docker
+
+```shell
+systemctl start docker
+```
+
+设置开机自动启动
+
+```shell
+sudo systemctl enable docker.service
+sudo systemctl enable containerd.service
+```
+
 #### 2、安装 docker-compose
 
 一句话命令安装 docker-compose，如果想自定义版本，可以修改下面的版本号（`DOCKER_COMPOSE_VER`对应的值），否则保持默认就好。
