@@ -81,7 +81,7 @@ docker-compose up -d --build
 
 执行完成后，项目便在后台跑起来了。
 
-#### 6、Docker-compose 常用命令
+### Docker-compose 常用命令
 
 查看程式的运行状态
 
@@ -95,7 +95,7 @@ docker-compose logs
 
 更多 Docker-compose 命令请参考： [Docker-compose 官方指南](https://docs.docker.com/compose/reference/) 。在官网能找到所有命令。
 
-#### 7、问答
+### 问答
 
 > 如何升级到新版本呢？
 > 
