@@ -403,8 +403,6 @@ class Netflix(object):
             start_time = time.time()
             while True:
                 if time.time() - start_time > el_wait_time:
-                    logger.warning(f'查找元素 {xpath} 耗时超过 {el_wait_time} 秒')
-
                     return None
 
                 try:
