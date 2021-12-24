@@ -77,7 +77,7 @@ def catch_exception(origin_func):
 
 
 class Netflix(object):
-    VERSION = 'v0.4'
+    VERSION = 'v0.5.1'
 
     # 超时秒数，包括隐式等待和显式等待
     TIMEOUT = 23
@@ -302,9 +302,7 @@ class Netflix(object):
 
         time.sleep(2)
 
-        self.click_forgot_pwd_btn()
-
-        self.handle_unknown_error_alert(self.click_forgot_pwd_btn, 12)
+        self.handle_click_events(self.click_forgot_pwd_btn, max_num_of_attempts=12)
 
         # 直到页面显示已发送邮件
         logger.debug('检测是否已到送信完成画面')
@@ -355,9 +353,7 @@ class Netflix(object):
 
             time.sleep(1)
 
-            self.click_submit_btn()
-
-            self.handle_unknown_error_alert(self.click_submit_btn)
+            self.handle_click_events(self.click_submit_btn)
 
             return self.__pwd_change_result()
         except Exception as e:
@@ -390,17 +386,57 @@ class Netflix(object):
         """
         self.driver.find_element_by_id('btn-save').click()
 
-    def element_visibility_of(self, xpath: str) -> WebElement or None:
+    def element_visibility_of(self, xpath: str, verify_val: bool = False,
+                              max_num_of_attempts: int = 3, el_wait_time: int = 2) -> WebElement or None:
         """
         元素是否存在且可见
         适用于在已经加载完的网页做检测，可见且存在则返回元素，否则返回 None
         :param xpath:
+        :param verify_val: 如果传入 True，则验证元素是否有值，或者 inner HTML 不为空，并作为关联条件
+        :param max_num_of_attempts: 最大尝试次数，由于有的元素的值可能是异步加载的，需要多次尝试是否能获取到值，每次获取间隔休眠次数秒
+        :param el_wait_time: 等待时间，查找元素最多等待多少秒，默认 2 秒
         :return:
         """
         try:
             self.driver.implicitly_wait(2)
 
-            el = self.driver.find_element_by_xpath(xpath)
+            start_time = time.time()
+            while True:
+                if time.time() - start_time > el_wait_time:
+                    logger.warning(f'查找元素 {xpath} 耗时超过 {el_wait_time} 秒')
+
+                    return None
+
+                try:
+                    # 此处只为找到元素，如果下面不需要验证元素是否有值的话，则使用此处找到的元素
+                    # 否则下面验值逻辑会重新找到该元素以使用，此处的 el 会被覆盖
+                    el = self.driver.find_element_by_xpath(xpath)
+
+                    break
+                except Exception:
+                    pass
+
+            num = 0
+            while True:
+                if not verify_val:
+                    break
+
+                # 需要每次循环找到此元素，以确定元素的值是否发生变化
+                el = self.driver.find_element_by_xpath(xpath)
+
+                if el.tag_name == 'input':
+                    val = el.get_attribute('value')
+                    if val and len(val) > 0:
+                        break
+                elif el.text != '':
+                    break
+
+                # 多次尝试无果则放弃
+                if num > max_num_of_attempts:
+                    break
+                num += 1
+
+                time.sleep(num)
 
             return el if EC.visibility_of(el) else None
         except Exception:
@@ -408,23 +444,48 @@ class Netflix(object):
         finally:
             self.driver.implicitly_wait(Netflix.TIMEOUT)
 
-    def has_unknown_error_alert(self) -> bool:
+    def has_unknown_error_alert(self, error_el_xpath: str) -> bool:
         """
-        Netflix 提醒页面出现未知错误
+        页面提示未知错误
         :return:
         """
-        error_tips_el = self.element_visibility_of('//div[@class="ui-message-contents"]')
-
+        error_tips_el = self.element_visibility_of(error_el_xpath, True)
         if error_tips_el:
             # 密码修改成功画面的提示语与错误提示语共用的同一个元素，防止误报
             if 'YourAccount?confirm=password' in self.driver.current_url or 'Your password has been changed' in error_tips_el.text:
                 return False
 
-            logger.warning('页面出现未知错误提醒，提醒内容为 ' + error_tips_el.text)
+            logger.warning(f'页面出现未知错误：{error_tips_el.text}')
 
             return True
 
         return False
+
+    def handle_click_events(self, func, error_el_xpath='//div[@class="ui-message-contents"]',
+                            max_num_of_attempts: int = 10):
+        """
+        处理点击事件
+
+        在某些画面点击提交的时候，有可能报未知错误，需要稍等片刻再点击才正常
+        :param func:
+        :param max_num_of_attempts:
+        :return:
+        """
+        func()
+
+        num = 0
+        while True:
+            if self.has_unknown_error_alert(error_el_xpath):
+                func()
+
+                if num >= max_num_of_attempts:
+                    raise Exception('处理未知错误失败')
+                num += 1
+
+                logger.info(f'程式将休眠 {num} 秒后重试点击动作')
+                time.sleep(num)
+            else:
+                break
 
     def handle_unknown_error_alert(self, func, max_try: int = 10):
         """
@@ -467,9 +528,8 @@ class Netflix(object):
         self.driver.get(reset_url)
 
         self.input_pwd(new_netflix_password)
-        self.click_submit_btn()
 
-        self.handle_unknown_error_alert(self.click_submit_btn)
+        self.handle_click_events(self.click_submit_btn)
 
         # 如果奈飞提示密码曾经用过，则应该先改为随机密码，然后再改回来
         pwd_error_tips = self.element_visibility_of('//div[@data-uia="field-newPassword+error"]')
@@ -479,9 +539,8 @@ class Netflix(object):
 
             random_pwd = self.gen_random_pwd()
             self.input_pwd(random_pwd)
-            self.click_submit_btn()
 
-            self.handle_unknown_error_alert(self.click_submit_btn)
+            self.handle_click_events(self.click_submit_btn)
 
             if not self.__pwd_change_result():
                 return False

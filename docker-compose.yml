@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    depends_on:
+      - redis
     container_name: netflix
     volumes:
       - .:/conf
