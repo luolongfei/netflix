@@ -77,10 +77,10 @@ def catch_exception(origin_func):
 
 
 class Netflix(object):
-    VERSION = 'v0.5.1'
+    VERSION = 'v0.5.2'
 
     # 超时秒数，包括隐式等待和显式等待
-    TIMEOUT = 23
+    TIMEOUT = 24
 
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36'
 
