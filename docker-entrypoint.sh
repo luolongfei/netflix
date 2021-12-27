@@ -2,7 +2,7 @@
 
 #===================================================================#
 #   Author: mybsdc <mybsdc@gmail.com>                               #
-#   Intro: https://github.com/luolongfei/freenom                    #
+#   Intro: https://github.com/luolongfei/netflix                    #
 #===================================================================#
 
 set -e
