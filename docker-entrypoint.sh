@@ -18,6 +18,10 @@ if [ ! -f /app/.env ]; then
     ln -s /conf/.env /app/.env
 fi
 
-python netflix.py -hl -f
+# 等待 redis 就绪才执行 netflix 脚本
+# https://docs.docker.com/compose/startup-order/
+# https://github.com/vishnubob/wait-for-it
+chmod +x ./wait-for-it.sh
+./wait-for-it.sh redis_for_netflix:6379 --strict --timeout=24 -- python netflix.py -hl -f
 
 exec "$@"
