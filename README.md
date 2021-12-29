@@ -92,6 +92,15 @@ docker-compose ps
 ```shell
 docker-compose logs
 ```
+停用
+```shell
+docker-compose down
+```
+在后台启用
+```shell
+# 如果跟上 --build 参数，则会自动多一步重新构建所有容器的动作
+docker-compose up -d
+```
 
 更多 Docker-compose 命令请参考： [Docker-compose 官方指南](https://docs.docker.com/compose/reference/) 。在官网能找到所有命令。
 
@@ -99,7 +108,7 @@ docker-compose logs
 
 > 如何升级到新版本呢？
 > 
-请在`docker-compose.yml`文件所在目录，拉取最新的代码，然后同样执行`docker-compose up -d --build`，Docker 会自动使用最新的代码进行构建，
+请在`docker-compose.yml`文件所在目录，执行`git pull`拉取最新的代码，然后同样执行`docker-compose up -d --build`，Docker 会自动使用最新的代码进行构建，
 构建完跑起来后，即是最新版本。
 
 > 非 Netflix 账户主可以使用本项目吗？
