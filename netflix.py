@@ -1217,6 +1217,8 @@ class Netflix(object):
                                                       files=[f'logs/{Netflix.now("%Y-%m-%d")}.log',
                                                              self.error_page_screenshot()])
 
+                                    break
+
                                 num += 1
                     except Exception as e:
                         logger.error('出错：{}', str(e))
