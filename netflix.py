@@ -1204,7 +1204,7 @@ class Netflix(object):
                                     break
                             except Exception as e:
                                 logger.warning(
-                                    f'在执行密码恢复操作过程中出错：{str(e)}，将重试，最多不超过 {self.max_num_of_attempts} 次。[{num}/{self.max_num_of_attempts}]')
+                                    f'在执行密码恢复操作过程中出错：{str(e)}，将重试，最多不超过 {self.max_num_of_attempts} 次 [{num}/{self.max_num_of_attempts}]')
                                 self.error_page_screenshot()
                             finally:
                                 # 超过最大尝试次数
