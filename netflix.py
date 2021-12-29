@@ -190,7 +190,7 @@ class Netflix(object):
         self.max_wait_reset_mail_time = 10
 
         # 恢复密码失败后最多重试几次
-        self.max_retry = 12
+        self.max_num_of_attempts = 12
 
         self.first_time = []
         self.today = Netflix.today_()
@@ -300,7 +300,7 @@ class Netflix(object):
         forgot_pwd.clear()
         Netflix.send_keys_delay_random(forgot_pwd, netflix_username)
 
-        time.sleep(2)
+        time.sleep(1)
 
         self.handle_click_events(self.click_forgot_pwd_btn, max_num_of_attempts=12)
 
@@ -334,19 +334,19 @@ class Netflix(object):
             curr_pwd.clear()
             Netflix.send_keys_delay_random(curr_pwd, curr_netflix_password)
 
-            time.sleep(2)
+            time.sleep(1)
 
             new_pwd = self.driver.find_element_by_id('id_newPassword')
             new_pwd.clear()
             Netflix.send_keys_delay_random(new_pwd, new_netflix_password)
 
-            time.sleep(2)
+            time.sleep(1)
 
             confirm_new_pwd = self.driver.find_element_by_id('id_confirmNewPassword')
             confirm_new_pwd.clear()
             Netflix.send_keys_delay_random(confirm_new_pwd, new_netflix_password)
 
-            time.sleep(1.5)
+            time.sleep(1.1)
 
             # 其它设备无需重新登录
             self.driver.find_element_by_xpath('//li[@data-uia="field-requireAllDevicesSignIn+wrapper"]').click()
@@ -357,9 +357,7 @@ class Netflix(object):
 
             return self.__pwd_change_result()
         except Exception as e:
-            logger.error('直接在账户内修改密码出错：' + str(e))
-
-            return False
+            raise Exception(f'直接在账户内修改密码出错：' + str(e))
 
     def input_pwd(self, new_netflix_password: str) -> None:
         """
@@ -540,8 +538,7 @@ class Netflix(object):
 
             self.handle_click_events(self.click_submit_btn)
 
-            if not self.__pwd_change_result():
-                return False
+            self.__pwd_change_result()
 
             # 账户内直接将密码改回原始值
             logger.info('尝试在账户内直接将密码改回原始密码')
@@ -552,7 +549,7 @@ class Netflix(object):
 
     def __pwd_change_result(self):
         """
-        密码修改结果
+        断言密码修改结果
         :return: 
         """
         try:
@@ -562,10 +559,7 @@ class Netflix(object):
 
             return True
         except Exception as e:
-            logger.error('未能正确跳到密码修改成功画面，疑似未成功，抛出异常：' + str(e))
-            self.error_page_screenshot()
-
-            return False
+            raise Exception(f'未能正确跳到密码修改成功画面，疑似未成功，抛出异常：' + str(e))
 
     @staticmethod
     def parse_mail(data: bytes, onlySubject: bool = False) -> dict or str:
@@ -1107,7 +1101,7 @@ class Netflix(object):
         return password
 
     @staticmethod
-    def send_keys_delay_random(element, keys, min_delay=0.13, max_delay=0.52):
+    def send_keys_delay_random(element, keys, min_delay=0.11, max_delay=0.24):
         """
         随机延迟输入
         :param element:
@@ -1174,14 +1168,14 @@ class Netflix(object):
                         data, event_type = result
                         event_reason = Netflix.get_event_reason(event_type)
                         start_time = time.time()
-                        num_of_tries = 0
 
+                        num = 1
                         while True:
                             try:
                                 if event_type == 1:  # 用户恶意修改密码
                                     self.__do_reset(u, p)  # 要么返回 True，要么抛异常
 
-                                    logger.info('成功恢复原始密码')
+                                    logger.success('成功恢复原始密码')
                                     Netflix.send_mail(
                                         f'在 {Netflix.format_time(start_time)} 发现有人修改了 Netflix 账户 {u} 的密码，我已自动将密码恢复为初始状态',
                                         [
@@ -1201,37 +1195,33 @@ class Netflix(object):
 
                                     self.set_need_to_do(u, 0)
 
-                                    logger.info('成功从随机密码改回原始密码')
+                                    logger.success('成功从随机密码改回原始密码')
                                     Netflix.send_mail(
                                         f'在 {Netflix.format_time(start_time)} 发现 Netflix 强迫您修改账户 {u} 的密码，我已自动将密码恢复为初始状态',
                                         [
                                             f'程式在 {self.now()} 已将密码恢复为初始状态，共耗时{Netflix.time_diff(start_time, time.time())}，本次自动处理成功。'])
 
                                     break
-
+                            except Exception as e:
+                                logger.warning(
+                                    f'在执行密码恢复操作过程中出错：{str(e)}，将重试，最多不超过 {self.max_num_of_attempts} 次。[{num}/{self.max_num_of_attempts}]')
+                                self.error_page_screenshot()
+                            finally:
                                 # 超过最大尝试次数
-                                if num_of_tries >= self.max_retry:
-                                    error_msg = f'程式一共尝试了 {num_of_tries} 次恢复密码，均以失败告终'
-                                    logger.error(error_msg)
-
+                                if num >= self.max_num_of_attempts:
+                                    logger.error('重试失败次数过多，已放弃本次恢复密码动作，将继续监听新的密码事件')
                                     self.set_need_to_do(u, 1)  # 恢复检测
 
-                                    screenshot_file = self.error_page_screenshot()
-
                                     Netflix.send_mail(f'主人，抱歉没能恢复 {u} 的密码，请尝试手动恢复', [
-                                        f'今次触发恢复密码的动作的原因为：{event_reason}。<br>发现时间：{Netflix.format_time(start_time)}<br><br>{error_msg}。我已将今天的日志以及这次出错画面的截图作为附件发送给您，请查收。'],
-                                                      files=[f'logs/{Netflix.now("%Y-%m-%d")}.log', screenshot_file])
+                                        f'今次触发恢复密码的动作的原因为：{event_reason}。<br>发现时间：{Netflix.format_time(start_time)}<br><br>程式一共尝试了 {num} 次恢复密码，均以失败告终。我已将今天的日志以及这次出错画面的截图作为附件发送给您，请查收。'],
+                                                      files=[f'logs/{Netflix.now("%Y-%m-%d")}.log',
+                                                             self.error_page_screenshot()])
 
-                                    break
-                            except Exception as e:
-                                logger.error(
-                                    f'在执行密码恢复操作过程中出错：{str(e)}，程式将最多重试 {self.max_retry} 次，已尝试 {num_of_tries} 次。')
-                            finally:
-                                num_of_tries += 1
+                                num += 1
                     except Exception as e:
                         logger.error('出错：{}', str(e))
 
-            time.sleep(2)
+            time.sleep(3)
 
             logger.debug('开始下一轮监听')
 
