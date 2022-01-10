@@ -47,6 +47,7 @@ from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
 from email import encoders
+from utils.version import __version__
 
 
 def catch_exception(origin_func):
@@ -77,8 +78,6 @@ def catch_exception(origin_func):
 
 
 class Netflix(object):
-    VERSION = 'v0.5.3'
-
     # 超时秒数，包括隐式等待和显式等待
     TIMEOUT = 24
 
@@ -88,8 +87,15 @@ class Netflix(object):
     RESET_PASSWORD_URL = 'https://www.netflix.com/password'
     FORGOT_PASSWORD_URL = 'https://www.netflix.com/LoginHelp'
 
+    # 请求重置密码的邮件正则
     RESET_MAIL_REGEX = re.compile(r'accountaccess.*?URL_ACCOUNT_ACCESS', re.I)
+
+    # 提取完成密码重置的链接正则
     RESET_URL_REGEX = re.compile(r'https://www\.netflix\.com.*?URL_PASSWORD', re.I)
+
+    # 密码被重置邮件正则
+    PWD_HAS_BEEN_CHANGED_REGEX = re.compile(
+        r'https?://.*?netflix\.com/YourAccount\?lnktrk=EMP&g=[^&]+&lkid=URL_YOUR_ACCOUNT_2', re.I)
 
     # 奈飞强迫用户修改密码
     FORCE_CHANGE_PASSWORD_REGEX = re.compile(r'https?://www\.netflix\.com/LoginHelp.*?lkid=URL_LOGIN_HELP', re.I)
@@ -643,37 +649,13 @@ class Netflix(object):
         return resp
 
     @staticmethod
-    def is_password_reset_result(subject: str) -> bool:
+    def is_password_reset_result(text: str) -> bool:
         """
         是否密码重置结果邮件
-        :param subject:
+        :param text:
         :return:
         """
-        return subject in (
-            '密碼已更改',
-            'Your password has been changed',
-            '您的密码已更改',
-            'パスワード更新のご案内',
-            '비밀번호 변경 알림',
-            'Sandi sudah diubah',
-            'Kata laluan anda telah ditukar',
-            'Din adgangskode er blevet &aelig_ndret',
-            'Ihr Passwort wurde ge&auml_ndert',
-            'Tu contrase&ntilde_a se ha cambiado',
-            'Mot de passe modifi&eacute_',
-            'Tvoja je lozinka promijenjena',
-            'La tua password &egrave_ stata modificata',
-            'A jelszavad m&oacute_dosult',
-            'Ditt l&ouml_senord har &auml_ndrats',
-            'Mật khẩu của bạn đ&atilde_ thay đổi',
-            'Parolanız değiştirildi',
-            'Vaše heslo bylo změněno',
-            'Ο κωδικός πρόσβασής σας άλλαξε',
-            'Ваш пароль изменен',
-            'הסיסמה שלך שונתה',
-            'لقد تمّ تغيير كلمة المرور الخاصة بك.',
-            'आपका पासवर्ड बदल दिया गया है',
-        )
+        return Netflix.PWD_HAS_BEEN_CHANGED_REGEX.search(text) is not None
 
     @staticmethod
     def is_password_reset_request(text: str):
@@ -799,7 +781,7 @@ class Netflix(object):
         # 定义事件类型 0：未知 1：用户恶意修改密码 2：Netflix 强迫用户修改密码
         event_type = 0
 
-        if Netflix.is_password_reset_result(resp['subject']):  # 检测到有用户恶意修改密码
+        if Netflix.is_password_reset_result(resp['text']):  # 检测到有用户恶意修改密码
             logger.info('检测到有人修改了 Netflix 账户 {} 的密码', netflix_account_email)
 
             event_type = 1
@@ -1138,7 +1120,7 @@ class Netflix(object):
 
     @catch_exception
     def run(self):
-        logger.info('当前程序版本为 ' + Netflix.VERSION)
+        logger.info('当前程序版本为 ' + __version__)
         logger.info('开始监听密码被改邮件')
 
         # 监听密码被改邮件
