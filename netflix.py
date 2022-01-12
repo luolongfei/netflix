@@ -86,6 +86,7 @@ class Netflix(object):
     LOGIN_URL = 'https://www.netflix.com/login'
     RESET_PASSWORD_URL = 'https://www.netflix.com/password'
     FORGOT_PASSWORD_URL = 'https://www.netflix.com/LoginHelp'
+    MANAGE_PROFILES_URL = 'https://www.netflix.com/ManageProfiles'
 
     # 请求重置密码的邮件正则
     RESET_MAIL_REGEX = re.compile(r'accountaccess.*?URL_ACCOUNT_ACCESS', re.I)
@@ -213,9 +214,9 @@ class Netflix(object):
     def _parse_multiple_accounts():
         accounts = os.getenv('MULTIPLE_NETFLIX_ACCOUNTS')
 
-        match = re.findall(r'\[(?P<u>.*?)\|(?P<p>.*?)\]', accounts, re.I)
+        match = re.findall(r'\[(?P<u>[^|\]]+?)\|(?P<p>[^|\]]+?)\|(?P<n>[^]]+?)\]', accounts, re.I)
         if match:
-            return [{'u': item[0], 'p': item[1]} for item in match]
+            return [{'u': item[0], 'p': item[1], 'n': item[2]} for item in match]
 
         raise Exception('未配置 Netflix 账户')
 
@@ -263,7 +264,7 @@ class Netflix(object):
         :param netflix_password:
         :return:
         """
-        logger.info('尝试登录 Netflix')
+        logger.debug('尝试登录账户：{}', netflix_username)
 
         # 多账户，每次登录前需要清除 cookies
         self.driver.delete_all_cookies()
@@ -272,21 +273,27 @@ class Netflix(object):
 
         u = self.driver.find_element_by_id('id_userLoginId')
         u.clear()
-        Netflix.send_keys_delay_random(u, netflix_username)
+        u.send_keys(netflix_username)
 
-        time.sleep(2)
+        time.sleep(1.1)
 
         p = self.driver.find_element_by_id('id_password')
         p.clear()
-        Netflix.send_keys_delay_random(p, netflix_password)
+        p.send_keys(netflix_password)
 
         self.driver.find_element_by_class_name('login-button').click()
 
-        logger.debug(f'当前地址为：{self.driver.current_url}')
+        try:
+            WebDriverWait(self.driver, timeout=3, poll_frequency=0.94).until(lambda d: 'browse' in d.current_url)
+        except Exception as e:
+            WebDriverWait(self.driver, timeout=2, poll_frequency=0.5).until(
+                EC.visibility_of_element_located(
+                    self.driver.find_element_by_xpath('//a[@data-uia="header-signout-link"]')),
+                '查找登出元素未果')
 
-        self.wait.until(lambda d: d.current_url == 'https://www.netflix.com/browse')
+            logger.warning(f'当前账户可能非 Netflix 会员，本次登录没有意义')
 
-        logger.info(f'已成功登录。当前地址为：{self.driver.current_url}')
+        logger.debug(f'已成功登录。当前地址为：{self.driver.current_url}')
 
         return True
 
@@ -313,7 +320,8 @@ class Netflix(object):
         # 直到页面显示已发送邮件
         logger.debug('检测是否已到送信完成画面')
         self.wait.until(EC.visibility_of(
-            self.driver.find_element_by_xpath('//*[@class="login-content"]//h2[@data-uia="email_sent_label"]')))
+            self.driver.find_element_by_xpath('//*[@class="login-content"]//h2[@data-uia="email_sent_label"]')),
+            '查找送信完成元素未果')
 
         logger.info('已发送重置密码邮件到 {}，注意查收', netflix_username)
 
@@ -1118,12 +1126,88 @@ class Netflix(object):
 
         return '未知原因'
 
+    def __recover_name(self, link_el: WebElement, real_name: str) -> bool:
+        """
+        执行用户名恢复操作
+        :param link_el:
+        :param real_name:
+        :return:
+        """
+        try:
+            link_el.click()
+
+            WebDriverWait(self.driver, timeout=4.2, poll_frequency=0.94).until(
+                EC.visibility_of_element_located((By.XPATH, '//button[@data-uia="profile-save-button"]')),
+                '保存按钮不可点击')
+
+            name_input_el = self.driver.find_element_by_id('profile-name-entry')
+            name_input_el.clear()
+            name_input_el.send_keys(real_name)
+
+            self.driver.find_element_by_xpath('//button[@data-uia="profile-save-button"]').click()
+
+            WebDriverWait(self.driver, timeout=5, poll_frequency=0.94).until(
+                EC.visibility_of(self.driver.find_element_by_class_name('profile-link')), '编辑按钮元素不可见')
+
+            return True
+        except Exception as e:
+            logger.error(f'尝试恢复用户名出错：{str(e)}')
+
+            return False
+
+    def protect_account_name(self):
+        """
+        保护账户名不被修改
+        :return:
+        """
+        for item in self.MULTIPLE_NETFLIX_ACCOUNTS:
+            try:
+                self.__login(item.get('u'), item.get('p'))
+
+                self.driver.get(Netflix.MANAGE_PROFILES_URL)
+
+                WebDriverWait(self.driver, timeout=3, poll_frequency=0.94).until(
+                    lambda d: 'ManageProfiles' in d.current_url,
+                    f'{item.get("u")} 可能非会员，无法访问 {Netflix.MANAGE_PROFILES_URL} 地址')
+
+                # 五个子账户，逐个检查
+                success_num = 0
+                events_count = 0
+                for index in range(5):
+                    real_name = item.get('n') + f'_0{index + 1}'
+
+                    link_el = self.driver.find_elements_by_xpath('//a[@class="profile-link"]')[index]
+                    curr_name = link_el.text
+
+                    if curr_name != real_name:
+                        logger.info(f'发现用户名被篡改为 【{curr_name}】')
+                        events_count += 1
+
+                        if self.__recover_name(link_el, real_name):
+                            logger.success(f'程式已将 【{curr_name}】 恢复为 【{real_name}】')
+
+                            # 成功处理一件，就记录一件
+                            success_num += 1
+
+                if success_num:
+                    self.driver.find_element_by_xpath('//span[@data-uia="profile-button"]').click()
+
+                    WebDriverWait(self.driver, timeout=3, poll_frequency=0.94).until(
+                        lambda d: 'browse' in d.current_url)
+
+                    logger.success(f'用户名已恢复完成，共 {events_count} 件篡改事件，已成功处理 {success_num} 件')
+
+                logger.debug('用户名处理结束')
+            except Exception as e:
+                logger.warning(f'用户名篡改检测出错：{str(e)} [账户：{item.get("u")}]')
+
     @catch_exception
     def run(self):
         logger.info('当前程序版本为 ' + __version__)
         logger.info('开始监听密码被改邮件')
 
         # 监听密码被改邮件
+        last_protection_time = time.time()
         while True:
             real_today = Netflix.today_()
             if self.today != real_today:
@@ -1206,6 +1290,13 @@ class Netflix(object):
                         logger.error('出错：{}', str(e))
 
             time.sleep(3)
+
+            # 保护账户用户名
+            if int(os.getenv('ENABLE_ACCOUNT_NAME_PROTECTION', 0)):
+                now = time.time()
+                if now - last_protection_time >= 124:
+                    last_protection_time = now
+                    self.protect_account_name()
 
             logger.debug('开始下一轮监听')
 
