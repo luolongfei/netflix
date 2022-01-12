@@ -2,8 +2,8 @@
 
 [![Netflix.png](https://s4.ax1x.com/2021/12/24/TYGHXD.png)](https://s4.ax1x.com/2021/12/24/TYGHXD.png)
 
-<h1>Netflix</h1>
-监听奈飞（Netflix）密码变更邮件，自动重置密码。
+<h4>监听奈飞（Netflix）密码变更邮件，自动重置密码。</h4>
+
 </div>
 
 ### 缘起
@@ -88,15 +88,21 @@ docker-compose up -d --build
 ```shell
 docker-compose ps
 ```
+
 输出程序日志
+
 ```shell
 docker-compose logs
 ```
+
 停用
+
 ```shell
 docker-compose down
 ```
+
 在后台启用
+
 ```shell
 # 如果跟上 --build 参数，则会自动多一步重新构建所有容器的动作
 docker-compose up -d
@@ -107,11 +113,10 @@ docker-compose up -d
 ### 问答
 
 > 如何升级到新版本呢？
-> 
+>
 请在`docker-compose.yml`文件所在目录，执行`git pull`拉取最新的代码，然后同样执行`docker-compose up -d --build`，Docker 会自动使用最新的代码进行构建，
 构建完跑起来后，即是最新版本。
 
 > 非 Netflix 账户主可以使用本项目吗？
-> 
-不能。本项目仅供 Netflix 账户主使用，因为涉及到监听 Netflix 账户的邮件，而只有 Netflix 账户主才有 Netflix 邮箱以及其密码的权限，所以只有 Netflix 
-账户主有权使用。
+>
+不能。本项目仅供 Netflix 账户主使用，因为涉及到监听 Netflix 账户的邮件，而只有 Netflix 账户主才有 Netflix 邮箱以及其密码的权限，所以只有 Netflix 账户主有权使用。
