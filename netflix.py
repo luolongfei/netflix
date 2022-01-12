@@ -231,7 +231,7 @@ class Netflix(object):
     def __logger_setting(self) -> None:
         logger.remove()
 
-        level = 'DEBUG' if self.args.debug else 'INFO'
+        level = 'DEBUG' if self.args.debug or int(os.getenv('DEBUG', 0)) else 'INFO'
         format = '<green>[{time:YYYY-MM-DD HH:mm:ss.SSS}]</green> <b><level>{level: <8}</level></b> | <cyan>{process.id}</cyan>:<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>'
 
         logger.add('logs/{time:YYYY-MM-DD}.log', level=level, format=format, encoding='utf-8')
