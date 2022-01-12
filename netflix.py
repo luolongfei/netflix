@@ -84,6 +84,7 @@ class Netflix(object):
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36'
 
     LOGIN_URL = 'https://www.netflix.com/login'
+    LOGOUT_URL = 'https://www.netflix.com/SignOut?lnkctr=mL'
     RESET_PASSWORD_URL = 'https://www.netflix.com/password'
     FORGOT_PASSWORD_URL = 'https://www.netflix.com/LoginHelp'
     MANAGE_PROFILES_URL = 'https://www.netflix.com/ManageProfiles'
@@ -257,7 +258,7 @@ class Netflix(object):
 
         return parser.parse_args()
 
-    def __login(self, netflix_username: str, netflix_password: str):
+    def _login(self, netflix_username: str, netflix_password: str):
         """
         登录
         :param netflix_username:
@@ -283,12 +284,14 @@ class Netflix(object):
 
         self.driver.find_element_by_class_name('login-button').click()
 
+        if self.has_unknown_error_alert():
+            raise UserWarning('当前账户可能处于风控期间，无法登录，本次操作将被忽略')
+
         try:
             WebDriverWait(self.driver, timeout=3, poll_frequency=0.94).until(lambda d: 'browse' in d.current_url)
         except Exception as e:
             WebDriverWait(self.driver, timeout=2, poll_frequency=0.5).until(
-                EC.visibility_of_element_located(
-                    self.driver.find_element_by_xpath('//a[@data-uia="header-signout-link"]')),
+                EC.visibility_of_element_located((By.XPATH, '//a[@data-uia="header-signout-link"]')),
                 '查找登出元素未果')
 
             logger.warning(f'当前账户可能非 Netflix 会员，本次登录没有意义')
@@ -315,7 +318,7 @@ class Netflix(object):
 
         time.sleep(1)
 
-        self.handle_click_events(self.click_forgot_pwd_btn, max_num_of_attempts=12)
+        self.handle_event(self.click_forgot_pwd_btn, max_num_of_attempts=12)
 
         # 直到页面显示已发送邮件
         logger.debug('检测是否已到送信完成画面')
@@ -367,7 +370,7 @@ class Netflix(object):
 
             time.sleep(1)
 
-            self.handle_click_events(self.click_submit_btn)
+            self.handle_event(self.click_submit_btn)
 
             return self.__pwd_change_result()
         except Exception as e:
@@ -454,7 +457,7 @@ class Netflix(object):
         finally:
             self.driver.implicitly_wait(Netflix.TIMEOUT)
 
-    def has_unknown_error_alert(self, error_el_xpath: str) -> bool:
+    def has_unknown_error_alert(self, error_el_xpath: str = '//div[@class="ui-message-contents"]') -> bool:
         """
         页面提示未知错误
         :return:
@@ -471,12 +474,11 @@ class Netflix(object):
 
         return False
 
-    def handle_click_events(self, func, error_el_xpath='//div[@class="ui-message-contents"]',
-                            max_num_of_attempts: int = 10):
+    def handle_event(self, func, error_el_xpath='//div[@class="ui-message-contents"]', max_num_of_attempts: int = 10):
         """
-        处理点击事件
+        处理事件，一般是单个点击事件
 
-        在某些画面点击提交的时候，有可能报未知错误，需要稍等片刻再点击才正常
+        在某些画面点击提交的时候，有可能报未知错误，需要稍等片刻再点击或者重新触发一系列事件后才正常
         :param func:
         :param max_num_of_attempts:
         :return:
@@ -492,35 +494,8 @@ class Netflix(object):
                     raise Exception('处理未知错误失败')
                 num += 1
 
-                logger.info(f'程式将休眠 {num} 秒后重试点击动作')
+                logger.debug(f'程式将休眠 {num} 秒后重试，最多不超过 {max_num_of_attempts} 次 [{num}/{max_num_of_attempts}]')
                 time.sleep(num)
-            else:
-                break
-
-    def handle_unknown_error_alert(self, func, max_try: int = 10):
-        """
-        处理 Netflix 未知异常
-
-        Netflix 会随机出现提醒页面出现未知错误，请稍后重试的情况，需要稍等片刻再点击才正常
-        :param func:
-        :param max_try:
-        :return:
-        """
-        num_of_tries = 0
-
-        while True:
-            if self.has_unknown_error_alert():
-                num_of_tries += 1
-
-                sleep_time = num_of_tries * 2
-                time.sleep(sleep_time)
-
-                logger.info(f'程式将休眠 {sleep_time} 秒后重试点击')
-
-                func()
-
-                if num_of_tries >= max_try:
-                    raise Exception('处理 Netflix 未知异常失败')
             else:
                 break
 
@@ -539,7 +514,7 @@ class Netflix(object):
 
         self.input_pwd(new_netflix_password)
 
-        self.handle_click_events(self.click_submit_btn)
+        self.handle_event(self.click_submit_btn)
 
         # 如果奈飞提示密码曾经用过，则应该先改为随机密码，然后再改回来
         pwd_error_tips = self.element_visibility_of('//div[@data-uia="field-newPassword+error"]')
@@ -550,7 +525,7 @@ class Netflix(object):
             random_pwd = self.gen_random_pwd()
             self.input_pwd(random_pwd)
 
-            self.handle_click_events(self.click_submit_btn)
+            self.handle_event(self.click_submit_btn)
 
             self.__pwd_change_result()
 
@@ -1155,6 +1130,27 @@ class Netflix(object):
 
             return False
 
+    def _logout(self):
+        """
+        登出
+        :return:
+        """
+        try:
+            logger.debug('尝试登出')
+
+            self.driver.get(Netflix.LOGOUT_URL)
+
+            WebDriverWait(self.driver, timeout=4.9, poll_frequency=0.5).until(
+                EC.visibility_of_element_located((By.XPATH, '//a[@data-uia="header-login-link"]')), '查找登入元素未果')
+
+            logger.debug('登出成功')
+
+            return True
+        except Exception as e:
+            logger.warning('登出失败：{}', str(e))
+
+            return False
+
     def protect_account_name(self):
         """
         保护账户名不被修改
@@ -1162,7 +1158,7 @@ class Netflix(object):
         """
         for item in self.MULTIPLE_NETFLIX_ACCOUNTS:
             try:
-                self.__login(item.get('u'), item.get('p'))
+                self._login(item.get('u'), item.get('p'))
 
                 self.driver.get(Netflix.MANAGE_PROFILES_URL)
 
@@ -1198,6 +1194,10 @@ class Netflix(object):
                     logger.success(f'用户名已恢复完成，共 {events_count} 件篡改事件，已成功处理 {success_num} 件')
 
                 logger.debug('用户名处理结束')
+
+                self._logout()
+            except UserWarning as e:
+                logger.debug(str(e))
             except Exception as e:
                 logger.warning(f'用户名篡改检测出错：{str(e)} [账户：{item.get("u")}]')
 
