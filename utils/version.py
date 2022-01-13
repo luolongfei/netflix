@@ -7,4 +7,4 @@
 @time 10:02
 """
 
-__version__ = 'v0.6'
+__version__ = 'v0.7.1'
