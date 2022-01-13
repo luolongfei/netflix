@@ -449,7 +449,7 @@ class Netflix(object):
 
         forgot_pwd = self.find_element_by_id('forgot_password_input')
         forgot_pwd.clear()
-        Netflix.send_keys_delay_random(forgot_pwd, netflix_username)
+        forgot_pwd.send_keys(netflix_username)
 
         time.sleep(1)
 
@@ -482,19 +482,19 @@ class Netflix(object):
 
             curr_pwd = self.find_element_by_id('id_currentPassword')
             curr_pwd.clear()
-            Netflix.send_keys_delay_random(curr_pwd, curr_netflix_password)
+            curr_pwd.send_keys(curr_netflix_password)
 
             time.sleep(1)
 
             new_pwd = self.find_element_by_id('id_newPassword')
             new_pwd.clear()
-            Netflix.send_keys_delay_random(new_pwd, new_netflix_password)
+            new_pwd.send_keys(new_netflix_password)
 
             time.sleep(1)
 
             confirm_new_pwd = self.find_element_by_id('id_confirmNewPassword')
             confirm_new_pwd.clear()
-            Netflix.send_keys_delay_random(confirm_new_pwd, new_netflix_password)
+            confirm_new_pwd.send_keys(new_netflix_password)
 
             time.sleep(1.1)
 
@@ -517,13 +517,13 @@ class Netflix(object):
         """
         new_pwd = self.find_element_by_id('id_newPassword')
         new_pwd.clear()
-        Netflix.send_keys_delay_random(new_pwd, new_netflix_password)
+        new_pwd.send_keys(new_netflix_password)
 
         time.sleep(2)
 
         confirm_new_pwd = self.find_element_by_id('id_confirmNewPassword')
         confirm_new_pwd.clear()
-        Netflix.send_keys_delay_random(confirm_new_pwd, new_netflix_password)
+        confirm_new_pwd.send_keys(new_netflix_password)
 
         time.sleep(1)
 
@@ -926,7 +926,7 @@ class Netflix(object):
         # 拉取最新邮件
         resp = self.__fetch_mail(netflix_account_email)
 
-        if self.is_password_reset_request(resp['text']):
+        if resp and self.is_password_reset_request(resp.get('text', '')):
             logger.info('Netflix 账户 {} 已收到请求重置密码的邮件，开始提取重置链接', netflix_account_email)
 
             match = Netflix.RESET_URL_REGEX.search(resp['text'])
