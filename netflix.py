@@ -926,7 +926,7 @@ class Netflix(object):
         # 拉取最新邮件
         resp = self.__fetch_mail(netflix_account_email)
 
-        if self.is_password_reset_request(resp['text']):
+        if resp and self.is_password_reset_request(resp.get('text', '')):
             logger.info('Netflix 账户 {} 已收到请求重置密码的邮件，开始提取重置链接', netflix_account_email)
 
             match = Netflix.RESET_URL_REGEX.search(resp['text'])
