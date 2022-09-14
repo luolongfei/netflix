@@ -101,7 +101,7 @@ class Netflix(object):
 
     # 密码被重置邮件正则
     PWD_HAS_BEEN_CHANGED_REGEX = re.compile(
-        r'https?://.*?netflix\.com/YourAccount\?lnktrk=EMP&g=[^&]+&lkid=URL_YOUR_ACCOUNT_2', re.I)
+        r'https?://.*?netflix\.com/YourAccount\?(?:lnktrk=EMP&g=[^&]+&lkid=URL_YOUR_ACCOUNT_2|g=[^&]+&lkid=URL_YOUR_ACCOUNT&lnktrk=EVO)', re.I)
 
     # 奈飞强迫用户修改密码
     FORCE_CHANGE_PASSWORD_REGEX = re.compile(r'https?://www\.netflix\.com/LoginHelp.*?lkid=URL_LOGIN_HELP', re.I)
