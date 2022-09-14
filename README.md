@@ -1,6 +1,6 @@
 <div align="center">
 
-[![Netflix.png](https://s4.ax1x.com/2021/12/24/TYGHXD.png)](https://s4.ax1x.com/2021/12/24/TYGHXD.png)
+<img src="https://s3.bmp.ovh/imgs/2022/09/14/3401cfc5431019b3.png" width="300px" height="100%" alt="Netflix logo" />
 
 <h4>监听奈飞（Netflix）密码变更邮件，自动重置密码。</h4>
 
@@ -31,7 +31,8 @@ yum update && yum install -y wget vim git # CentOS
 wget -qO- get.docker.com | bash
 ```
 
-说明：请使用 KVM 架构的 VPS，OpenVZ 架构的 VPS 不支持安装 Docker，另外 CentOS 8 不支持用此脚本来安装 Docker。 更多关于 Docker
+说明：请使用 KVM 架构的 VPS，OpenVZ 架构的 VPS 不支持安装 Docker，另外 CentOS 8 不支持用此脚本来安装 Docker。 更多关于
+Docker
 安装的内容参考 [Docker 官方安装指南](https://docs.docker.com/engine/install/) 。
 
 启动 Docker
@@ -69,7 +70,8 @@ git clone https://github.com/luolongfei/netflix.git && cd netflix
 cp .env.example .env
 ```
 
-然后使用`vim`修改`.env`文件中的配置项。注意在 Docker 中运行的话，`DRIVER_EXECUTABLE_FILE`、`REDIS_HOST`以及`REDIS_PORT`的值保持默认即可。
+然后使用`vim`修改`.env`文件中的配置项。注意在 Docker 中运行的话，`DRIVER_EXECUTABLE_FILE`、`REDIS_HOST`以及`REDIS_PORT`
+的值保持默认即可。
 
 #### 5、运行
 
@@ -114,9 +116,11 @@ docker-compose up -d
 
 > 如何升级到新版本呢？
 >
-请在`docker-compose.yml`文件所在目录，执行`git pull`拉取最新的代码，然后同样执行`docker-compose up -d --build`，Docker 会自动使用最新的代码进行构建，
+请在`docker-compose.yml`文件所在目录，执行`git pull`拉取最新的代码，然后同样执行`docker-compose up -d --build`，Docker
+会自动使用最新的代码进行构建，
 构建完跑起来后，即是最新版本。
 
 > 非 Netflix 账户主可以使用本项目吗？
 >
-不能。本项目仅供 Netflix 账户主使用，因为涉及到监听 Netflix 账户的邮件，而只有 Netflix 账户主才有 Netflix 邮箱以及其密码的权限，所以只有 Netflix 账户主有权使用。
+不能。本项目仅供 Netflix 账户主使用，因为涉及到监听 Netflix 账户的邮件，而只有 Netflix 账户主才有 Netflix 邮箱以及其密码的权限，所以只有
+Netflix 账户主有权使用。
