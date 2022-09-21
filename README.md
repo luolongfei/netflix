@@ -6,6 +6,12 @@
 
 </div>
 
+**本人承接与 Netflix 或其它平台相关的自动化脚本的单子，有需求的可以联系 luolongf@gmail.com**
+
+**本人承接与 Netflix 或其它平台相关的自动化脚本的单子，有需求的可以联系 luolongf@gmail.com**
+
+**本人承接与 Netflix 或其它平台相关的自动化脚本的单子，有需求的可以联系 luolongf@gmail.com**
+
 ### 缘起
 
 共享 Netflix 账户的用户，密码可能频繁被人修改，使大家无法登录。
