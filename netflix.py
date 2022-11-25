@@ -97,7 +97,7 @@ class Netflix(object):
     RESET_MAIL_REGEX = re.compile(r'accountaccess.*?URL_ACCOUNT_ACCESS', re.I)
 
     # 提取完成密码重置的链接正则
-    RESET_URL_REGEX = re.compile(r'https://www\.netflix\.com/password[^"]+', re.I)
+    RESET_URL_REGEX = re.compile(r'https://www\.netflix\.com/password[^]]+', re.I)
 
     # 密码被重置邮件正则
     PWD_HAS_BEEN_CHANGED_REGEX = re.compile(

@@ -3,3 +3,4 @@ venv/
 logs/
 .idea/
 chromedriver.exe
+utils/__pycache__/
