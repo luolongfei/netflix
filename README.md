@@ -16,6 +16,18 @@
 
 <img src="https://images.llfapp.com/WeChat.jpg" width="300px" height="100%" alt="WeChat" />
 
+### 项目演示
+
+> 奈飞全自动系统 Netflix-Admin
+
+<img src="https://s21.ax1x.com/2024/05/05/pkAXuJx.png" width="900px" height="100%" alt="Netflix-Admin" />
+
+> 奈飞自动取码，支持独立部署或接口调用的方式
+
+<img src="https://s21.ax1x.com/2024/05/05/pkAXnF1.png" width="900px" height="100%" alt="Self-Service" />
+
+*所有功能支持定制开发，支持与现有系统交互。*
+
 ### 缘起
 
 共享 Netflix 账户的用户，密码可能频繁被人修改，使大家无法登录。
