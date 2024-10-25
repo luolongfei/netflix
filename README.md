@@ -1,33 +1,3 @@
-<div align="center">
-
-<img src="https://s3.bmp.ovh/imgs/2022/09/14/3401cfc5431019b3.png" width="300px" height="100%" alt="Netflix logo" />
-
-<h4>监听奈飞（Netflix）密码变更邮件，自动重置密码。</h4>
-
-</div>
-
-**本人承接与 Netflix 或其它平台相关的自动化脚本的单子，有需求的可以联系 luolongf@gmail.com**
-
-**本人承接与 Netflix 或其它平台相关的自动化脚本的单子，有需求的可以联系 luolongf@gmail.com**
-
-**本人承接与 Netflix 或其它平台相关的自动化脚本的单子，有需求的可以联系 luolongf@gmail.com**
-
-> 通过上方邮箱地址联系，或者直接加下方微信联系，添加时备注“奈飞”以便通过验证，成功添加好友后，直接留言说明你的需求，我会尽快回复。
-
-<img src="https://images.llfapp.com/WeChat.jpg" width="300px" height="100%" alt="WeChat" />
-
-### 项目演示
-
-> 奈飞全自动系统 Netflix-Admin
-
-<img src="https://s21.ax1x.com/2024/05/05/pkAXuJx.png" width="900px" height="100%" alt="Netflix-Admin" />
-
-> 奈飞自动取码，支持独立部署或接口调用的方式
-
-<img src="https://s21.ax1x.com/2024/05/05/pkAXnF1.png" width="900px" height="100%" alt="Self-Service" />
-
-*所有功能支持定制开发，支持与现有系统交互。*
-
 ### 缘起
 
 共享 Netflix 账户的用户，密码可能频繁被人修改，使大家无法登录。
