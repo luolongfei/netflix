@@ -4,7 +4,9 @@
 </div>
 
 **本人接与 Netflix 或其它平台相关的自动化脚本的单子，有需求的可以联系 luolongf@gmail.com 或加下面的微信**
+
 **本人接与 Netflix 或其它平台相关的自动化脚本的单子，有需求的可以联系 luolongf@gmail.com 或加下面的微信**
+
 **本人接与 Netflix 或其它平台相关的自动化脚本的单子，有需求的可以联系 luolongf@gmail.com 或加下面的微信**
 
 > 通过上方邮箱地址联系，或者直接加下方微信联系，添加时备注“奈飞”以便通过验证，成功添加好友后，直接留言说明你的需求，我会尽快回复。
@@ -16,10 +18,24 @@
 DEMO 环境地址：[https://demo.netflixadmin.com](https://demo.netflixadmin.com)
 
 > 奈飞全自动系统 Netflix-Admin
-<img src="https://s21.ax1x.com/2024/05/05/pkAXuJx.png" width="900px" height="100%" alt="Netflix-Admin" />
+
+<img src="https://alist.llf.app:1443/d/root/images/Netflix/nfa-1.png?sign=9GuuFCpnw1FH_495lSBofzu9McuiWsJuo7ui_mABtXA=:0" width="900px" height="100%" alt="Netflix-Admin" />
+
+<img src="https://alist.llf.app:1443/d/root/images/Netflix/nfa-2.png?sign=8z-ZToDUCLTe6-bWVPYDV5ivlU9poFFSZsi-3926dl8=:0" width="900px" height="100%" alt="Netflix-Admin" />
+
+<img src="https://alist.llf.app:1443/d/root/images/Netflix/nfa-3.png?sign=1R74eE_chUi1BwfZjwGlN9mKSLoO6b8XXzTxMtwsB84=:0" width="900px" height="100%" alt="Netflix-Admin" />
+
+<img src="https://alist.llf.app:1443/d/root/images/Netflix/nfa-4.png?sign=Nx4wdatAKWneZVD6LLaFNRfU88iD4uagI4NPpT3l4V8=:0" width="900px" height="100%" alt="Netflix-Admin" />
+
+<img src="https://alist.llf.app:1443/d/root/images/Netflix/nfa-5.png?sign=CMoFZBxbAuJnQVq4H5Op9vYeS1hFEV8KZMAn6bgs4dg=:0" width="900px" height="100%" alt="Netflix-Admin" />
+
+<img src="https://alist.llf.app:1443/d/root/images/Netflix/nfa-6.png?sign=jP6VK41mfKM4HijmXY3a9_0nd9TyqCnCukFa1WBVtYA=:0" width="900px" height="100%" alt="Netflix-Admin" />
+
+<img src="https://alist.llf.app:1443/d/root/images/Netflix/nfa-7.png?sign=bCdvhriMSjxSueYMWETVGeLhSQmm-DIxWOQxOsLIzEE=:0" width="900px" height="100%" alt="Netflix-Admin" />
 
 > 奈飞自动取码，支持独立部署或接口调用的方式
-<img src="https://s21.ax1x.com/2024/05/05/pkAXnF1.png" width="900px" height="100%" alt="Self-Service" />
+
+<img src="https://alist.llf.app:1443/d/root/images/Netflix/nfa-8.png?sign=iOtkQPqN7SAMrXXNMWBsQg3f0q1XHhdT05v9xKl42bM=:0" width="900px" height="100%" alt="Self-Service" />
 
 *所有功能支持定制开发，支持与现有系统交互。*
 
