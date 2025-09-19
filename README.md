@@ -14,7 +14,7 @@
 
 # 项目演示
 
-**DEMO 环境地址：[https://demo.netflixadmin.com/admin](https://demo.netflixadmin.com/admin)**
+**DEMO 环境地址：[https://netflix-admin-demo.llf.app/admin](https://netflix-admin-demo.llf.app/admin)**
 
 ## 奈飞全自动系统 Netflix-Admin
 
